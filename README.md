@@ -78,87 +78,87 @@ author:
 
 ## Examples:
 	'''
-# Creating A Database Models Structure
-class TestingDataBase(Model):
-    # Creating New Table. Name="AboutTeachers"
-    class AboutTeachers:
-        # Creating 4 Columns. Name = Name, Age, Income, Phone
-        #
-        #Columns     Datatype
-        Name    =   Field.String
-        Age     =   Field.Integer
-        Income  =   Field.Integer
-        Phone   =   Field.LongInt
-        #
+	# Creating A Database Models Structure
+	class TestingDataBase(Model):
+    	# Creating New Table. Name="AboutTeachers"
+    	class AboutTeachers:
+        	# Creating 4 Columns. Name = Name, Age, Income, Phone
+        	#
+        	#Columns     Datatype
+	        Name    =   Field.String
+    	    Age     =   Field.Integer
+    	    Income  =   Field.Integer
+    	    Phone   =   Field.LongInt
+    	    #
+	
+	    # Creating New Table. Name="AboutBooks"
+	    class AboutBooks:
+	        # Creating 4 Columns. Name = Name, Price, Class
+    	    #
+        	# Columns   DataType
+        	Name    =   Field.String
+        	Price   =   Field.Integer
+        	Class   =   Field.String
+        	#                   
 
-    # Creating New Table. Name="AboutBooks"
-    class AboutBooks:
-        # Creating 4 Columns. Name = Name, Price, Class
-        #
-        # Columns   DataType
-        Name    =   Field.String
-        Price   =   Field.Integer
-        Class   =   Field.String
-        #                   
-
-    # Creating New Table. Name="AboutStudents"
-    class AboutStudents:
-        # Creating 4 Columns. Name = Name, Age, Class, Phone
-        #
-        #Columns     Datatype
-        Name    =   Field.String
-        Age     =   Field.Integer
-        Class  =   Field.String
-        Phone   =   Field.LongInt
-        #
-
-
-
-# Create Object For InterFace        
-DBase = TestingDataBase()
-
-# Connect To DataBase
-DBase.connect(dbname="Testing_DataBase")
-# or Use Only DBase.connect() 
-
-# Get All Available Tables Names as list
-print DBase.get_all_tables_name()
-
-# Get All Columns Names From Tables
-for table in DBase.get_all_tables_name():
-    print "\nTable Name : {}\n".format(table) 
-    print DBase.get_all_columns_(table) # As List
-
-# Get All Tables With Interface Object In Dictionery
-print DBase.get_tables()
-
-# Default Database Name 
-print DBase.get_db_names()
+	    # Creating New Table. Name="AboutStudents"
+    	class AboutStudents:
+        	# Creating 4 Columns. Name = Name, Age, Class, Phone
+       		 #
+        	#Columns     Datatype
+        	Name    =   Field.String
+        	Age     =   Field.Integer
+        	Class  =   Field.String
+        	Phone   =   Field.LongInt
+        	#
 
 
-# Get Table Interface
-t = DBase.Table(name="AboutTeachers")
-# or
-t = DBase.get_tables()["AboutTeachers"]
+
+	# Create Object For InterFace        
+	DBase = TestingDataBase()
+
+	# Connect To DataBase
+	DBase.connect(dbname="Testing_DataBase")
+	# or Use Only DBase.connect() 
+
+	# Get All Available Tables Names as list
+	print DBase.get_all_tables_name()
+
+	# Get All Columns Names From Tables
+	for table in DBase.get_all_tables_name():
+    	print "\nTable Name : {}\n".format(table) 
+    	print DBase.get_all_columns_(table) # As List
+
+	# Get All Tables With Interface Object In Dictionery
+	print DBase.get_tables()
+
+	# Default Database Name 
+	print DBase.get_db_names()
 
 
-# Create New Row Interface
-n = t.new()
-# Set Values
+	# Get Table Interface
+	t = DBase.Table(name="AboutTeachers")
+	# or
+	t = DBase.get_tables()["AboutTeachers"]
 
 
-# Get All Values as Dictionery
-print n.get_all()
-
-# Save Row InterFace 
-n.save()
-# Get Row Interface
-r = t.get(id)
+	# Create New Row Interface
+	n = t.new()
+	# Set Values
 
 
-# Close database
-DBase.save()
-'''
+	# Get All Values as Dictionery
+	print n.get_all()
+
+	# Save Row InterFace 
+	n.save()
+	# Get Row Interface
+	r = t.get(id)
+
+
+	# Close database
+	DBase.save()
+	'''
 ]]></content>
   <tabTrigger>readme</tabTrigger>
 </snippet>
