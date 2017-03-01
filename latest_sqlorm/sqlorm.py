@@ -1,9 +1,87 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
+#
+#
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#       Object InterFace Manual
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# author:
+#   S.S.B
+#   surajsinghbisht054@gmail.com
+#   https://bitforestinfo.blogspot.com
+#
+#
+# About sqlorm:  
+#       A Python object relational mapper for SQLite3.
+#
+# Reference:  https://www.sqlite.org/lang.html
+#            https://docs.python.org/3/library/sqlite3.html
+#
+# Import:
+#   from sqlorm import Model, Field
+#
+#
+# =====================================
+# =========== DataBase ================
+# =====================================
+#
+#   connect(path="", dbname=None)   --> Connect To Database
+#   close()                         --> Close Database    
+#   save()                          --> Save All Changes
+#   get_db_names()                  --> Get Default Database Name
+#   get_all_columns_(TableName)     --> Get All Columns Name List
+#   get_all_table_with_class()      --> Get All Tables With Class Object As Dictonery
+#   get_all_tables_name()           --> Get All Tables Name
+#   get_tables()                    --> Get All Tables Object
+#   Table(name=None)                --> Get Table Object
+#
+#
+# =====================================
+# ============= Table =================   
+# =====================================
+#
+#   new()               --> New Row Interface
+#   insert(**kwargs)    --> Insert New Values Into Row, id argument Required
+#   update(id=None, data={}) --> Update Values Into Row
+#   delete(id)          --> Delete Row , Id argument Required
+#   search(**kwargs)    --> Search Row Object InterFace
+#   get_all()           --> Get All Row Object InterFace as list
+#   has(id)             --> Check Row
+#   columns_name()      --> Get All Columns Names As List
+#   save()              --> Save All Changes
+#   get_tables_name()   --> Get Current Object Table Name
+#   table_access(TableName) --> Change Current Object Table Access
+#
+#
+# =====================================
+# ============= Row ===================
+# =====================================
+#
+#   get_all()           --> Get All Values In Dictionery
+#   set_all(**kwargs)   --> Set Values
+#   save()              --> Save Changes Into Database
+#
+__author__='''
 
+######################################################
+                By S.S.B Group                          
+######################################################
+
+    Suraj Singh
+    Admin
+    S.S.B Group
+    surajsinghbisht054@gmail.com
+    http://bitforestinfo.blogspot.com/
+
+    Note: We Feel Proud To Be Indian
+######################################################
+'''
+
+# Importing Module
 import sqlite3
 import os
 
-
+# Python Sqlite Data Field
 class Field:
     """Fields For Model"""
     Null    = "NULL"
@@ -14,21 +92,28 @@ class Field:
     Unicode = "TEXT"
     Buffer  = "BLOB"
 
+# For Columns Inputs Arrangements
 def column_arrangements_for_inputs(*args):
+    """ For Columns Inputs Arrangements """
     data=""
     for i in args:
         data = data + "{},".format(i)
     data = data[:-1]
     return "({})".format(data)
 
+
+# For Value INputs Arrangements
 def value_arrangements_for_inputs(*args):
+    """ For Value INputs Arrangements """
     data=""
     for i in args:
         data = data + "'{}',".format(i)
     data = data[:-1]
     return "({})".format(data)
 
+# Row Object
 class Row:
+    """ Row Object Interface """
     def __init__(self, submaster, master,tablename, id):
         self.__SUBMASTER__ = submaster
         self.__MASTER__ = submaster.master
@@ -59,6 +144,7 @@ class Row:
         return 
     
     def get_all(self):
+        """ Return All Values In Dictonery With Columns And Values"""
         data = []
         column = [i for (i,j) in self.__MASTER__.get_all_columns_(self.__TableHook__)]
         for i in column:
@@ -67,23 +153,23 @@ class Row:
         return dict(data)
     
     def set_all(self, **kwargs):
+        """ Set All Inputs From Dictonery """
         for col, data in kwargs.iteritems():
                     self.__dict__[col]=data
         return
         
     
     def save(self):
+        """ Save All Data In Row"""
         data = []
         column = [i for (i,j) in self.__MASTER__.get_all_columns_(self.__TableHook__)]
         for i in column:
             if self.__dict__[i]:
                 data.append((i,self.__dict__[i]))
         data=data+[('id', self.__id__)]
-        print data
         if dict(data)['id']=="NEW":
             kwargs = dict(data)
             kwargs.pop('id')
-            print kwargs
             self.__SUBMASTER__.insert(**kwargs)
             
         elif self.__SUBMASTER__.has(dict(data)['id']):
@@ -95,6 +181,7 @@ class Row:
     
    
 class Table:
+    """ Table Object Interface """
     def __init__(self, master,tablename):
         self.dbase = master.dbase
         self.cursor = master.cur
@@ -108,19 +195,22 @@ class Table:
         return "< TableControls:{} >".format(self.TableHook)
         
     def Row(self, id):
+        """ Get Row Object Using Id"""
         return Row(self,self.master, self.TableHook, id)
         
     
     def get(self, id):
+        """ Get Values From Row Using Id"""
         sql = "SELECT * from {} WHERE id = {};".format(self.TableHook, str(id))
         self.master.cur.execute(sql)
-        #return self.master.cur.fetchall()
         return [self.Row(i[0]) for i in self.master.cur.fetchall()]
     
     def new(self):
+        """ Create New Row Object """
         return self.Row("NEW")
     
     def insert(self, **kwargs):
+        """ Insert Values Into Row """
         if kwargs:
             column =[]
             value = []
@@ -141,6 +231,7 @@ class Table:
         
     
     def update(self, id=None, data={}):
+        """ Update Row Values """
         sql = "UPDATE {} SET {} WHERE id = {}"
         if id==None:
             if "id" in data.keys():
@@ -154,16 +245,18 @@ class Table:
         for i,j in data.iteritems():
             sentence = sentence + " {} = '{}',".format(i,j)
         self.master.cur.execute(sql.format(self.TableHook,sentence[:-1], id))
-        print sql.format(self.TableHook,sentence[:-1], id)
+        #print sql.format(self.TableHook,sentence[:-1], id)
         return self.master.save()
     
     def get_all(self):
+        """ Get All Row Object In List """
         sql = "SELECT * from {}".format(self.TableHook)
         self.master.cur.execute(sql)
         columns = tuple(['id']+[i for i,j in self.columns_name()])
         return [self.Row(i[0]) for i in self.master.cur.fetchall()]
     
     def search(self, **kwargs):
+        """ Search For Row Object """
         sentence = ""
         for i,j in kwargs.iteritems():
             sentence = sentence + " {} = '{}' AND".format(i,j)
@@ -173,6 +266,7 @@ class Table:
         return [dict(zip(columns, i)) for i in self.master.cur.fetchall()]
     
     def delete(self, id):
+        """ Delete Row """
         if type(id)==type(1) or type(id)==type('1'):
             sql = 'DELETE from {} WHERE id = {};'.format(self.TableHook, str(id))
             self.master.cur.execute(sql)
@@ -182,25 +276,31 @@ class Table:
         return self.master.save()
     
     def has(self, id):
+        """ Verify Row Available or Not """
         result = self.get(id)
         return True if result else False
     
     def columns_name(self):
+        """ Get All Columns Name In List"""
         return self.master.get_all_columns_(self.TableHook)
     
     def save(self):
+        """ Commit all Changes Into Database"""
         return self.master.save()
         
      
     def get_tables_name(self):
+        """ Get All Tables Names In List"""
         return self.master.get_all_tables_name()
     
     def table_access(self, table):
+        """ Change Working Table Access"""
         self.TableHook = table
         return self.TableHook
 
     
 class Model(object):
+    """ Database Object Interface """
     def __init__(self):
         pass
     
@@ -211,6 +311,7 @@ class Model(object):
         return "< DataBase:{} >".format(self.get_db_names())
     
     def connect(self, path="", dbname=None):
+        """ Connect To Database And Get sqlite.connect object"""
         if not dbname:
             dbname = self.get_db_names()
         dbpath = os.path.join(path, dbname+".sqlite.db")
@@ -228,6 +329,7 @@ class Model(object):
         return
     
     def check_for_new_tables(self):
+        """ Check For New Tables """
         print "[*] Checking Tables And Columns"
         (match, unmatch ) = self.check_available_tables()
         for i in unmatch:
@@ -235,30 +337,38 @@ class Model(object):
         return
     
     def Table(self, name=None):
+        """ Get Table Object Using Name """
         if name:
             return Table(self,name) 
         return Table(self,self.get_all_table_with_class()[0][0]) 
     
     
     def close(self):
+        """ Close Database """
         return self.dbase.close()
     
     def save(self):
+        """ Commit All Changes Into Database """
         return self.dbase.commit()
     
     def get_db_names(self):
+        """ Get Class Name From Proxy Main Class """
         return self.__class__.__name__.__str__() 
     
     def get_all_columns_(self, TableName):
+        """ Get All Columns In List From Proxy Main Class """
         return [i for i in dict(self.__class__.__dict__[TableName].__dict__).iteritems() if "__" not in i[0]]
     
     def get_all_table_with_class(self):
+        """Get All Tables With Class Object From Proxy Main Class """
         return [i for i in dict(self.__class__.__dict__).iteritems() if "__" not in i[0]]
     
     def get_all_tables_name(self):
+        """ Get All Tables Name  From Proxy Main Class """
         return [i[0] for i in self.get_all_table_with_class()]
     
     def get_tables(self):
+        """ Get All Tables Object """
         data={}
         for i in self.get_all_tables_name():
             data[i]=self.Table(name=i)
@@ -266,6 +376,7 @@ class Model(object):
     
     
     def create_new_table(self, ntable):
+        """ Create New Table """
         print "[Info] Creating New Table And Columns ..."
         data = ""
         for table,control in self.get_all_table_with_class():
@@ -281,6 +392,7 @@ class Model(object):
         return self.save()
 
     def create_new_tables(self):
+        """ Create New Tables """
         print """[Info] Creating New Tables And Columns .... """
         data = ""
         for table,control in self.get_all_table_with_class():
@@ -295,6 +407,7 @@ class Model(object):
         return self.save()
     
     def get_tables_from_db(self):
+        """ Get Tables From Database """
         data= []
         self.cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
         for i in self.cur.fetchall():
@@ -302,6 +415,7 @@ class Model(object):
         return data
     
     def check_available_tables(self):
+        """ Check Available Tables Into Database """
         match = []
         unmatch = []
         db = self.get_tables_from_db()
