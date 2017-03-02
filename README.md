@@ -1,5 +1,6 @@
 <snippet>
-  <content><![CDATA[
+  <content>
+  <![CDATA[
 # sqlorm
 Object-Relational Mapper For Python Sqlite3
 
