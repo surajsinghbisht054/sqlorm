@@ -57,17 +57,6 @@ class TestingDataBase(Model):
         Class   =   Field.String
         #                   
 
-    # Creating New Table. Name="AboutStudents"
-    class AboutStudents:
-        # Creating 4 Columns. Name = Name, Age, Class, Phone
-        #
-        #Columns     Datatype
-        Name    =   Field.String
-        Age     =   Field.Integer
-        Class  =   Field.String
-        Phone   =   Field.LongInt
-        #
-
 
 # In[4]:
 
