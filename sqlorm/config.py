@@ -14,6 +14,7 @@ Example:
 
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -122,8 +123,13 @@ def configure(
         if not init_file.exists():
             init_file.write_text("")
 
+        # Add parent directory to sys.path so it can be imported
+        parent_dir = str(_migrations_dir.parent)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+
         _current_settings["MIGRATION_MODULES"] = {
-            "sqlorm_app": str(_migrations_dir),
+            "sqlorm_app": _migrations_dir.name,
         }
 
     if _django_configured:

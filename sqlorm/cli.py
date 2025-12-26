@@ -81,26 +81,35 @@ def migrate(app_label: str = None, verbosity: int = 1):
 
 def main():
     """CLI entry point."""
+    # Parent parser for common arguments
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument(
+        "-v", "--verbosity", type=int, default=1, choices=[0, 1, 2]
+    )
+    parent_parser.add_argument(
+        "--models", required=True, help="Python file with model definitions"
+    )
+
     parser = argparse.ArgumentParser(
         prog="sqlorm", description="SQLORM - Django ORM without the project structure"
     )
     parser.add_argument("--version", action="version", version="3.0.0")
-    parser.add_argument("-v", "--verbosity", type=int, default=1, choices=[0, 1, 2])
-    parser.add_argument(
-        "--models", required=True, help="Python file with model definitions"
-    )
 
     subparsers = parser.add_subparsers(dest="command")
 
     # makemigrations
-    mm = subparsers.add_parser("makemigrations", help="Create migrations")
+    mm = subparsers.add_parser(
+        "makemigrations", help="Create migrations", parents=[parent_parser]
+    )
     mm.add_argument("-n", "--name", help="Migration name")
 
     # migrate
-    subparsers.add_parser("migrate", help="Apply migrations")
+    subparsers.add_parser("migrate", help="Apply migrations", parents=[parent_parser])
 
     # showmigrations
-    subparsers.add_parser("showmigrations", help="Show migrations")
+    subparsers.add_parser(
+        "showmigrations", help="Show migrations", parents=[parent_parser]
+    )
 
     args = parser.parse_args()
 

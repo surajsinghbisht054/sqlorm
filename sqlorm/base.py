@@ -70,13 +70,13 @@ class ModelMeta(type):
         from django.apps import apps
         from django.db import models as django_models
 
-        # Collect fields
+        # Collect fields and methods
         fields = {}
         methods = {}
         for attr_name, attr_value in namespace.items():
             if isinstance(attr_value, django_models.Field):
                 fields[attr_name] = attr_value
-            elif callable(attr_value) and not attr_name.startswith("_"):
+            elif callable(attr_value) or attr_name == "__str__":
                 methods[attr_name] = attr_value
 
         # Build Meta
@@ -97,6 +97,7 @@ class ModelMeta(type):
             "__module__": "sqlorm.app.models",
             "Meta": NewMeta,
             **fields,
+            **methods,
         }
 
         django_model = type(name, (django_models.Model,), model_attrs)
