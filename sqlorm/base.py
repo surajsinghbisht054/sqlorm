@@ -42,6 +42,292 @@ logger = logging.getLogger("sqlorm.base")
 _model_registry: Dict[str, Type["Model"]] = {}
 
 
+class ModelInstanceWrapper:
+    """
+    Wrapper that combines a Django model instance with SQLORM model methods.
+    
+    This allows custom methods defined on SQLORM models to be accessible
+    on instances returned from querysets.
+    """
+    
+    def __init__(self, django_instance, sqlorm_class):
+        # Store references without triggering __setattr__ override
+        object.__setattr__(self, '_django_instance', django_instance)
+        object.__setattr__(self, '_sqlorm_class', sqlorm_class)
+    
+    def __getattr__(self, name):
+        # First check if it's a custom method on the SQLORM class
+        sqlorm_class = object.__getattribute__(self, '_sqlorm_class')
+        django_instance = object.__getattribute__(self, '_django_instance')
+        
+        if name in sqlorm_class.__dict__ and callable(getattr(sqlorm_class, name, None)):
+            method = getattr(sqlorm_class, name)
+            # Bind the method to this wrapper instance
+            return lambda *args, **kwargs: method(self, *args, **kwargs)
+        
+        # Otherwise, get from Django instance
+        return getattr(django_instance, name)
+    
+    def __setattr__(self, name, value):
+        django_instance = object.__getattribute__(self, '_django_instance')
+        setattr(django_instance, name, value)
+    
+    def __repr__(self):
+        django_instance = object.__getattribute__(self, '_django_instance')
+        return repr(django_instance)
+    
+    def __str__(self):
+        sqlorm_class = object.__getattribute__(self, '_sqlorm_class')
+        if '__str__' in sqlorm_class.__dict__:
+            return sqlorm_class.__str__(self)
+        django_instance = object.__getattribute__(self, '_django_instance')
+        return str(django_instance)
+
+
+class WrappedQuerySet:
+    """
+    A QuerySet wrapper that returns ModelInstanceWrapper objects instead
+    of raw Django model instances.
+    """
+    
+    def __init__(self, queryset, sqlorm_class):
+        self._queryset = queryset
+        self._sqlorm_class = sqlorm_class
+    
+    def _wrap(self, obj):
+        """Wrap a Django model instance."""
+        if obj is None:
+            return None
+        return ModelInstanceWrapper(obj, self._sqlorm_class)
+    
+    def _wrap_queryset(self, qs):
+        """Return a new WrappedQuerySet for a queryset result."""
+        return WrappedQuerySet(qs, self._sqlorm_class)
+    
+    def __iter__(self):
+        for obj in self._queryset:
+            yield self._wrap(obj)
+    
+    def __len__(self):
+        return len(self._queryset)
+    
+    def __bool__(self):
+        return bool(self._queryset)
+    
+    def __getitem__(self, key):
+        result = self._queryset[key]
+        if hasattr(result, '__iter__') and not hasattr(result, '_meta'):
+            # It's a slice, return wrapped queryset
+            return self._wrap_queryset(result)
+        return self._wrap(result)
+    
+    # Methods that return single instances
+    def get(self, *args, **kwargs):
+        return self._wrap(self._queryset.get(*args, **kwargs))
+    
+    def first(self):
+        return self._wrap(self._queryset.first())
+    
+    def last(self):
+        return self._wrap(self._queryset.last())
+    
+    def earliest(self, *args, **kwargs):
+        return self._wrap(self._queryset.earliest(*args, **kwargs))
+    
+    def latest(self, *args, **kwargs):
+        return self._wrap(self._queryset.latest(*args, **kwargs))
+    
+    def create(self, **kwargs):
+        return self._wrap(self._queryset.create(**kwargs))
+    
+    def get_or_create(self, **kwargs):
+        obj, created = self._queryset.get_or_create(**kwargs)
+        return self._wrap(obj), created
+    
+    def update_or_create(self, **kwargs):
+        obj, created = self._queryset.update_or_create(**kwargs)
+        return self._wrap(obj), created
+    
+    # Methods that return querysets
+    def filter(self, *args, **kwargs):
+        return self._wrap_queryset(self._queryset.filter(*args, **kwargs))
+    
+    def exclude(self, *args, **kwargs):
+        return self._wrap_queryset(self._queryset.exclude(*args, **kwargs))
+    
+    def order_by(self, *args):
+        return self._wrap_queryset(self._queryset.order_by(*args))
+    
+    def reverse(self):
+        return self._wrap_queryset(self._queryset.reverse())
+    
+    def distinct(self, *args):
+        return self._wrap_queryset(self._queryset.distinct(*args))
+    
+    def all(self):
+        return self._wrap_queryset(self._queryset.all())
+    
+    def none(self):
+        return self._wrap_queryset(self._queryset.none())
+    
+    def select_related(self, *args):
+        return self._wrap_queryset(self._queryset.select_related(*args))
+    
+    def prefetch_related(self, *args):
+        return self._wrap_queryset(self._queryset.prefetch_related(*args))
+    
+    def only(self, *args):
+        return self._wrap_queryset(self._queryset.only(*args))
+    
+    def defer(self, *args):
+        return self._wrap_queryset(self._queryset.defer(*args))
+    
+    def using(self, alias):
+        return self._wrap_queryset(self._queryset.using(alias))
+    
+    def annotate(self, *args, **kwargs):
+        return self._wrap_queryset(self._queryset.annotate(*args, **kwargs))
+    
+    def values(self, *args, **kwargs):
+        return self._queryset.values(*args, **kwargs)
+    
+    def values_list(self, *args, **kwargs):
+        return self._queryset.values_list(*args, **kwargs)
+    
+    # Aggregation methods (return values, not instances)
+    def count(self):
+        return self._queryset.count()
+    
+    def exists(self):
+        return self._queryset.exists()
+    
+    def aggregate(self, *args, **kwargs):
+        return self._queryset.aggregate(*args, **kwargs)
+    
+    def delete(self):
+        return self._queryset.delete()
+    
+    def update(self, **kwargs):
+        return self._queryset.update(**kwargs)
+    
+    def bulk_create(self, objs, **kwargs):
+        results = self._queryset.bulk_create(objs, **kwargs)
+        return [self._wrap(obj) for obj in results]
+    
+    def bulk_update(self, objs, fields, **kwargs):
+        return self._queryset.bulk_update(objs, fields, **kwargs)
+    
+    def in_bulk(self, id_list=None, **kwargs):
+        results = self._queryset.in_bulk(id_list, **kwargs)
+        return {k: self._wrap(v) for k, v in results.items()}
+
+
+class WrappedManager:
+    """
+    A manager wrapper that returns WrappedQuerySet objects.
+    """
+    
+    def __init__(self, manager, sqlorm_class):
+        self._manager = manager
+        self._sqlorm_class = sqlorm_class
+    
+    def _wrap_queryset(self, qs):
+        return WrappedQuerySet(qs, self._sqlorm_class)
+    
+    def _wrap(self, obj):
+        if obj is None:
+            return None
+        return ModelInstanceWrapper(obj, self._sqlorm_class)
+    
+    def all(self):
+        return self._wrap_queryset(self._manager.all())
+    
+    def filter(self, *args, **kwargs):
+        return self._wrap_queryset(self._manager.filter(*args, **kwargs))
+    
+    def exclude(self, *args, **kwargs):
+        return self._wrap_queryset(self._manager.exclude(*args, **kwargs))
+    
+    def get(self, *args, **kwargs):
+        return self._wrap(self._manager.get(*args, **kwargs))
+    
+    def create(self, **kwargs):
+        return self._wrap(self._manager.create(**kwargs))
+    
+    def get_or_create(self, **kwargs):
+        obj, created = self._manager.get_or_create(**kwargs)
+        return self._wrap(obj), created
+    
+    def update_or_create(self, **kwargs):
+        obj, created = self._manager.update_or_create(**kwargs)
+        return self._wrap(obj), created
+    
+    def first(self):
+        return self._wrap(self._manager.first())
+    
+    def last(self):
+        return self._wrap(self._manager.last())
+    
+    def count(self):
+        return self._manager.count()
+    
+    def exists(self):
+        return self._manager.exists()
+    
+    def none(self):
+        return self._wrap_queryset(self._manager.none())
+    
+    def using(self, alias):
+        return WrappedManager(self._manager.using(alias), self._sqlorm_class)
+    
+    def bulk_create(self, objs, **kwargs):
+        results = self._manager.bulk_create(objs, **kwargs)
+        return [self._wrap(obj) for obj in results]
+    
+    def in_bulk(self, id_list=None, **kwargs):
+        results = self._manager.in_bulk(id_list, **kwargs)
+        return {k: self._wrap(v) for k, v in results.items()}
+    
+    def order_by(self, *args):
+        return self._wrap_queryset(self._manager.order_by(*args))
+    
+    def values(self, *args, **kwargs):
+        return self._manager.values(*args, **kwargs)
+    
+    def values_list(self, *args, **kwargs):
+        return self._manager.values_list(*args, **kwargs)
+    
+    def aggregate(self, *args, **kwargs):
+        return self._manager.aggregate(*args, **kwargs)
+    
+    def annotate(self, *args, **kwargs):
+        return self._wrap_queryset(self._manager.annotate(*args, **kwargs))
+    
+    def distinct(self, *args):
+        return self._wrap_queryset(self._manager.distinct(*args))
+    
+    def select_related(self, *args):
+        return self._wrap_queryset(self._manager.select_related(*args))
+    
+    def prefetch_related(self, *args):
+        return self._wrap_queryset(self._manager.prefetch_related(*args))
+    
+    def only(self, *args):
+        return self._wrap_queryset(self._manager.only(*args))
+    
+    def defer(self, *args):
+        return self._wrap_queryset(self._manager.defer(*args))
+    
+    def reverse(self):
+        return self._wrap_queryset(self._manager.reverse())
+    
+    def earliest(self, *args, **kwargs):
+        return self._wrap(self._manager.earliest(*args, **kwargs))
+    
+    def latest(self, *args, **kwargs):
+        return self._wrap(self._manager.latest(*args, **kwargs))
+
+
 class ObjectsDescriptor:
     """
     Descriptor that provides access to the Django model's objects manager.
@@ -66,9 +352,10 @@ class ObjectsDescriptor:
         # If model specifies a database alias, use it
         using_db = getattr(objtype, '_using', None)
         if using_db:
-            return manager.using(using_db)
+            manager = manager.using(using_db)
         
-        return manager
+        # Return wrapped manager that provides SQLORM model instances
+        return WrappedManager(manager, objtype)
 
 
 class ModelMeta(type):
@@ -249,6 +536,10 @@ class Model(metaclass=ModelMeta):
         # Store reference
         cls._django_model = django_model
         cls._initialized = True
+        
+        # Expose Django model exceptions on SQLORM class for convenient access
+        cls.DoesNotExist = django_model.DoesNotExist
+        cls.MultipleObjectsReturned = django_model.MultipleObjectsReturned
         
         # Register with Django's app registry
         try:

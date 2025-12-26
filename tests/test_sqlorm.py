@@ -1075,6 +1075,218 @@ class TestLookups:
         assert NullLookup.objects.filter(name__isnull=False).count() == 2
 
 
+class TestModelInstanceMethods:
+    """Test cases for custom methods on SQLORM model instances."""
+    
+    @pytest.fixture(autouse=True)
+    def setup_database(self):
+        """Set up a test database for each test."""
+        from sqlorm import configure
+        from sqlorm.base import clear_registry
+        
+        with tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False) as f:
+            self.db_path = f.name
+        
+        configure({
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': self.db_path,
+        })
+        
+        yield
+        
+        # Cleanup
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+    
+    def test_custom_method_accessible_from_get(self):
+        """Test that custom methods are accessible on instances from get()."""
+        from sqlorm import Model, fields
+        
+        class TaskWithMethod(Model):
+            title = fields.CharField(max_length=100)
+            is_done = fields.BooleanField(default=False)
+            
+            def mark_done(self):
+                self.is_done = True
+                self.save()
+            
+            def get_title_upper(self):
+                return self.title.upper()
+        
+        TaskWithMethod.migrate()
+        
+        # Create a task
+        task = TaskWithMethod.objects.create(title="Test Task")
+        assert task.is_done is False
+        
+        # Fetch and use custom method
+        fetched = TaskWithMethod.objects.get(id=task.id)
+        assert hasattr(fetched, 'mark_done')
+        fetched.mark_done()
+        
+        # Verify the change was saved
+        verified = TaskWithMethod.objects.get(id=task.id)
+        assert verified.is_done is True
+    
+    def test_custom_method_accessible_from_filter(self):
+        """Test that custom methods are accessible on instances from filter()."""
+        from sqlorm import Model, fields
+        
+        class ItemWithMethod(Model):
+            name = fields.CharField(max_length=100)
+            
+            def get_display_name(self):
+                return f"[{self.name}]"
+        
+        ItemWithMethod.migrate()
+        
+        ItemWithMethod.objects.create(name="Item1")
+        ItemWithMethod.objects.create(name="Item2")
+        
+        items = ItemWithMethod.objects.filter(name__startswith="Item")
+        for item in items:
+            assert hasattr(item, 'get_display_name')
+            assert item.get_display_name().startswith("[")
+            assert item.get_display_name().endswith("]")
+    
+    def test_custom_method_accessible_from_first(self):
+        """Test that custom methods are accessible on instances from first()."""
+        from sqlorm import Model, fields
+        
+        class FirstTestModel(Model):
+            value = fields.IntegerField()
+            
+            def double_value(self):
+                return self.value * 2
+        
+        FirstTestModel.migrate()
+        FirstTestModel.objects.create(value=5)
+        
+        item = FirstTestModel.objects.first()
+        assert item.double_value() == 10
+    
+    def test_custom_method_accessible_from_create(self):
+        """Test that custom methods are accessible on instances from create()."""
+        from sqlorm import Model, fields
+        
+        class CreateTestModel(Model):
+            name = fields.CharField(max_length=100)
+            
+            def greet(self):
+                return f"Hello, {self.name}!"
+        
+        CreateTestModel.migrate()
+        
+        item = CreateTestModel.objects.create(name="World")
+        assert item.greet() == "Hello, World!"
+    
+    def test_does_not_exist_exception(self):
+        """Test that DoesNotExist exception is accessible on model class."""
+        from sqlorm import Model, fields
+        
+        class ExceptionTestModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        ExceptionTestModel.migrate()
+        
+        # Verify DoesNotExist is accessible
+        assert hasattr(ExceptionTestModel, 'DoesNotExist')
+        
+        # Test that it's raised correctly
+        with pytest.raises(ExceptionTestModel.DoesNotExist):
+            ExceptionTestModel.objects.get(id=99999)
+    
+    def test_multiple_objects_returned_exception(self):
+        """Test that MultipleObjectsReturned exception is accessible on model class."""
+        from sqlorm import Model, fields
+        
+        class MultipleTestModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        MultipleTestModel.migrate()
+        
+        # Verify MultipleObjectsReturned is accessible
+        assert hasattr(MultipleTestModel, 'MultipleObjectsReturned')
+        
+        # Create duplicates
+        MultipleTestModel.objects.create(name="Duplicate")
+        MultipleTestModel.objects.create(name="Duplicate")
+        
+        # Test that it's raised correctly
+        with pytest.raises(MultipleTestModel.MultipleObjectsReturned):
+            MultipleTestModel.objects.get(name="Duplicate")
+    
+    def test_custom_str_method(self):
+        """Test that custom __str__ method works on instances."""
+        from sqlorm import Model, fields
+        
+        class StrTestModel(Model):
+            title = fields.CharField(max_length=100)
+            
+            def __str__(self):
+                return f"Model: {self.title}"
+        
+        StrTestModel.migrate()
+        
+        item = StrTestModel.objects.create(title="Test")
+        fetched = StrTestModel.objects.get(id=item.id)
+        assert str(fetched) == "Model: Test"
+    
+    def test_method_with_self_modification(self):
+        """Test custom method that modifies instance and saves."""
+        from sqlorm import Model, fields
+        
+        class CounterModel(Model):
+            name = fields.CharField(max_length=100)
+            count = fields.IntegerField(default=0)
+            
+            def increment(self):
+                self.count += 1
+                self.save()
+                return self.count
+        
+        CounterModel.migrate()
+        
+        item = CounterModel.objects.create(name="Counter")
+        fetched = CounterModel.objects.get(id=item.id)
+        
+        result = fetched.increment()
+        assert result == 1
+        
+        # Verify persisted
+        verified = CounterModel.objects.get(id=item.id)
+        assert verified.count == 1
+    
+    def test_queryset_chaining_with_custom_methods(self):
+        """Test that queryset chaining preserves access to custom methods."""
+        from sqlorm import Model, fields
+        
+        class ChainTestModel(Model):
+            name = fields.CharField(max_length=100)
+            category = fields.CharField(max_length=50)
+            active = fields.BooleanField(default=True)
+            
+            def full_info(self):
+                return f"{self.name} ({self.category})"
+        
+        ChainTestModel.migrate()
+        
+        ChainTestModel.objects.create(name="Item1", category="A", active=True)
+        ChainTestModel.objects.create(name="Item2", category="A", active=False)
+        ChainTestModel.objects.create(name="Item3", category="B", active=True)
+        
+        # Chain filter, exclude, order_by
+        items = (ChainTestModel.objects
+                .filter(active=True)
+                .exclude(category="B")
+                .order_by('name'))
+        
+        for item in items:
+            assert hasattr(item, 'full_info')
+            info = item.full_info()
+            assert "(" in info and ")" in info
+
+
 # Multi-database tests are in a separate file: test_multi_database.py
 # This is necessary because Django doesn't support full reconfiguration
 # after django.setup() has been called. The separate file ensures a

@@ -43,7 +43,7 @@ class Task(Model):
     def complete(self):
         """Mark task as complete."""
         self.is_completed = True
-        self.completed_at = datetime.now()
+        self.completed_at = timezone.now()
         self.save()
 
 # Ensure table exists
@@ -75,11 +75,9 @@ def list_tasks(show_all=False):
 def complete_task(task_id):
     try:
         task = Task.objects.get(id=task_id)
-        task.is_completed = True
-        task.completed_at = timezone.now()
-        task.save()
+        task.complete()
         print(f"Completed: {task.title}")
-    except Task._django_model.DoesNotExist:
+    except Task.DoesNotExist:
         print(f"Task {task_id} not found!")
 
 def delete_task(task_id):
@@ -88,7 +86,7 @@ def delete_task(task_id):
         title = task.title
         task.delete()
         print(f"Deleted: {title}")
-    except Task._django_model.DoesNotExist:
+    except Task.DoesNotExist:
         print(f"Task {task_id} not found!")
 
 def clear_completed():
