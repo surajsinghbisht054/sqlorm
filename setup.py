@@ -10,24 +10,25 @@ Installation:
 
 Quick Start:
     from sqlorm import configure, Model, fields
-    
+
     configure({
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': 'mydb.sqlite3',
     })
-    
+
     class User(Model):
         name = fields.CharField(max_length=100)
         email = fields.EmailField(unique=True)
-    
+
     User.migrate()
     user = User.objects.create(name="John", email="john@example.com")
 
 For more information, visit: https://github.com/surajsinghbisht054/sqlorm
 """
 
-from setuptools import setup, find_packages
 from pathlib import Path
+
+from setuptools import find_packages, setup
 
 # Read the README file
 this_directory = Path(__file__).parent

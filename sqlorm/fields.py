@@ -14,7 +14,7 @@ All Django field types are available through the `fields` namespace:
 
 Example:
     >>> from sqlorm import fields
-    >>> 
+    >>>
     >>> class User(Model):
     ...     name = fields.CharField(max_length=100)
     ...     email = fields.EmailField(unique=True)
@@ -34,67 +34,67 @@ logger = logging.getLogger("sqlorm.fields")
 class FieldsProxy:
     """
     Proxy class that provides access to Django model fields.
-    
+
     This class lazily imports Django fields when accessed, allowing
     you to define models before Django is configured.
-    
+
     Usage:
         >>> from sqlorm import fields
-        >>> 
+        >>>
         >>> # Access any Django field type
         >>> name_field = fields.CharField(max_length=100)
         >>> age_field = fields.IntegerField(null=True)
         >>> email_field = fields.EmailField(unique=True)
     """
-    
+
     _fields_module = None
-    
+
     @classmethod
     def _get_fields_module(cls):
         """Get the Django models module, importing it if necessary."""
         if cls._fields_module is None:
             try:
                 from django.db import models
+
                 cls._fields_module = models
             except ImportError:
                 raise ImportError(
-                    "Django is not installed. "
-                    "Install it with: pip install django"
+                    "Django is not installed. " "Install it with: pip install django"
                 )
         return cls._fields_module
-    
+
     def __getattr__(self, name: str) -> Any:
         """
         Get a Django field class by name.
-        
+
         Args:
             name: Name of the Django field class (e.g., 'CharField')
-        
+
         Returns:
             Django field class
-        
+
         Raises:
             AttributeError: If the field type doesn't exist
         """
         models = self._get_fields_module()
-        
+
         if hasattr(models, name):
             return getattr(models, name)
-        
+
         raise AttributeError(
             f"Unknown field type: {name}. "
             f"See Django documentation for available field types."
         )
-    
+
     def __dir__(self):
         """List available field types."""
         try:
             models = self._get_fields_module()
             return [
-                name for name in dir(models)
-                if name.endswith("Field") or name in (
-                    "ForeignKey", "OneToOneField", "ManyToManyField"
-                )
+                name
+                for name in dir(models)
+                if name.endswith("Field")
+                or name in ("ForeignKey", "OneToOneField", "ManyToManyField")
             ]
         except ImportError:
             return []
@@ -193,24 +193,24 @@ All fields support these options:
 Examples
 --------
 >>> from sqlorm import Model, fields
->>> 
+>>>
 >>> class Product(Model):
 ...     # Text fields
 ...     name = fields.CharField(max_length=200)
 ...     description = fields.TextField(blank=True)
 ...     sku = fields.CharField(max_length=50, unique=True)
-...     
+...
 ...     # Numeric fields
 ...     price = fields.DecimalField(max_digits=10, decimal_places=2)
 ...     quantity = fields.PositiveIntegerField(default=0)
-...     
+...
 ...     # Boolean fields
 ...     is_available = fields.BooleanField(default=True)
-...     
+...
 ...     # Date/time fields
 ...     created_at = fields.DateTimeField(auto_now_add=True)
 ...     updated_at = fields.DateTimeField(auto_now=True)
-...     
+...
 ...     # Choices
 ...     STATUS_CHOICES = [
 ...         ('draft', 'Draft'),

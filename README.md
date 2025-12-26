@@ -17,14 +17,14 @@
 </p>
 
 ```
-   ________  ________  ___       ________  ________  _____ ______      
-  |\   ____\|\   __  \|\  \     |\   __  \|\   __  \|\   _ \  _   \    
-  \ \  \___|\ \  \|\  \ \  \    \ \  \|\  \ \  \|\  \ \  \\\__\ \  \   
-   \ \_____  \ \  \\\  \ \  \    \ \  \\\  \ \   _  _\ \  \\|__| \  \  
-    \|____|\  \ \  \\\  \ \  \____\ \  \\\  \ \  \\  \\ \  \    \ \  \ 
+   ________  ________  ___       ________  ________  _____ ______
+  |\   ____\|\   __  \|\  \     |\   __  \|\   __  \|\   _ \  _   \
+  \ \  \___|\ \  \|\  \ \  \    \ \  \|\  \ \  \|\  \ \  \\\__\ \  \
+   \ \_____  \ \  \\\  \ \  \    \ \  \\\  \ \   _  _\ \  \\|__| \  \
+    \|____|\  \ \  \\\  \ \  \____\ \  \\\  \ \  \\  \\ \  \    \ \  \
       ____\_\  \ \_____  \ \_______\ \_______\ \__\\ _\\ \__\    \ \__\
      |\_________\|___| \__\|_______|\|_______|\|__|\|__|\|__|     \|__|
-     \|_________|     \|__|                                            
+     \|_________|     \|__|
 ```
 
 ---
@@ -244,19 +244,19 @@ class Article(Model):
     title = fields.CharField(max_length=200)
     slug = fields.SlugField(unique=True)
     content = fields.TextField()
-    
+
     # Numeric fields
     view_count = fields.PositiveIntegerField(default=0)
     rating = fields.DecimalField(max_digits=3, decimal_places=2, null=True)
-    
+
     # Boolean fields
     is_published = fields.BooleanField(default=False)
-    
+
     # Date/time fields
     published_at = fields.DateTimeField(null=True, blank=True)
     created_at = fields.DateTimeField(auto_now_add=True)
     updated_at = fields.DateTimeField(auto_now=True)
-    
+
     # Choices
     STATUS_CHOICES = [
         ('draft', 'Draft'),
@@ -264,7 +264,7 @@ class Article(Model):
         ('published', 'Published'),
     ]
     status = fields.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
-    
+
     class Meta:
         ordering = ['-created_at']
         verbose_name = 'Article'
@@ -758,4 +758,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <p align="center">
   Made with ❤️ for the Python community
 </p>
-

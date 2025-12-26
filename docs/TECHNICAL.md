@@ -116,7 +116,7 @@ When you call `configure()`, SQLORM performs a carefully orchestrated initializa
 def configure(databases: dict = None, alias: str = 'default', ...):
     # 1. Set required Django environment variable
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'sqlorm_settings')
-    
+
     # 2. Configure Django settings programmatically
     from django.conf import settings
     if not settings.configured:
@@ -126,7 +126,7 @@ def configure(databases: dict = None, alias: str = 'default', ...):
             DEFAULT_AUTO_FIELD='django.db.models.BigAutoField',
             USE_TZ=True,
         )
-    
+
     # 3. Initialize Django
     import django
     django.setup()
@@ -142,24 +142,24 @@ SQLORM uses a custom metaclass to intercept model creation:
 class ModelMeta(type):
     """Metaclass that registers models dynamically."""
     _models = {}
-    
+
     def __new__(mcs, name, bases, namespace, **kwargs):
         # Skip the base Model class itself
         if name == 'Model':
             return super().__new__(mcs, name, bases, namespace)
-        
+
         # Dynamically create an app_label for this model
         # This is required by Django's model system
         if 'Meta' not in namespace:
             namespace['Meta'] = type('Meta', (), {'app_label': 'sqlorm'})
-        
+
         # Create the class inheriting from Django's Model
         from django.db import models
         new_bases = tuple(
-            models.Model if b.__name__ == 'Model' else b 
+            models.Model if b.__name__ == 'Model' else b
             for b in bases
         )
-        
+
         cls = super().__new__(mcs, name, new_bases, namespace)
         mcs._models[name] = cls
         return cls
@@ -174,11 +174,11 @@ Accessing `Model.objects` returns Django's QuerySet manager. SQLORM uses a descr
 ```python
 class ObjectsDescriptor:
     """Descriptor that provides access to Django's objects manager."""
-    
+
     def __get__(self, obj, objtype=None):
         if objtype is None:
             return None
-        
+
         # Return Django's default manager
         from django.db import models
         for base in objtype.__mro__:
@@ -187,7 +187,7 @@ class ObjectsDescriptor:
         return None
 ```
 
-**Why a Descriptor?** 
+**Why a Descriptor?**
 
 Python's `@property` decorator doesn't work with `@classmethod`. Using a descriptor allows us to intercept attribute access at the class level and return the correct manager.
 
@@ -222,7 +222,7 @@ def _parse_database_url(url: str) -> dict:
     - mysql://user:pass@host:3306/dbname
     """
     parsed = urlparse(url)
-    
+
     ENGINE_MAP = {
         'postgres': 'django.db.backends.postgresql',
         'postgresql': 'django.db.backends.postgresql',
@@ -230,7 +230,7 @@ def _parse_database_url(url: str) -> dict:
         'sqlite': 'django.db.backends.sqlite3',
         'oracle': 'django.db.backends.oracle',
     }
-    
+
     return {
         'ENGINE': ENGINE_MAP.get(parsed.scheme),
         'NAME': parsed.path.lstrip('/'),
@@ -253,15 +253,15 @@ The base model provides:
 class Model(metaclass=ModelMeta):
     """
     Base class for all SQLORM models.
-    
+
     Inherits from Django's Model through metaclass transformation.
     """
     objects = ObjectsDescriptor()
-    
+
     class Meta:
         abstract = True
         app_label = 'sqlorm'
-    
+
     @classmethod
     def migrate(cls):
         """
@@ -270,7 +270,7 @@ class Model(metaclass=ModelMeta):
         """
         from django.db import connection
         from django.db.backends.base.schema import BaseDatabaseSchemaEditor
-        
+
         with connection.schema_editor() as schema_editor:
             try:
                 schema_editor.create_model(cls)
@@ -287,20 +287,20 @@ Fields are proxied from Django to avoid initialization order issues:
 class FieldsProxy:
     """
     Lazy proxy to Django model fields.
-    
+
     We can't import Django fields at module load time because
     Django might not be configured yet. This proxy defers the
     import until first access.
     """
-    
+
     def __getattr__(self, name: str):
         # Ensure Django is configured
         self._ensure_configured()
-        
+
         # Import and return the requested field class
         from django.db import models
         return getattr(models, name)
-    
+
     def _ensure_configured(self):
         from django.conf import settings
         if not settings.configured:
@@ -342,12 +342,12 @@ def get_connection(alias: str = 'default'):
 def execute_raw_sql(sql: str, params=None, using='default') -> list:
     """
     Execute raw SQL and return results.
-    
+
     Args:
         sql: SQL query with %s placeholders
         params: Parameters to substitute
         using: Database alias
-    
+
     Returns:
         List of tuples (rows)
     """
@@ -366,7 +366,7 @@ def execute_raw_sql(sql: str, params=None, using='default') -> list:
 def transaction(using: str = 'default'):
     """
     Context manager for database transactions.
-    
+
     Usage:
         with transaction():
             Model.objects.create(...)
@@ -375,11 +375,11 @@ def transaction(using: str = 'default'):
     """
     from django.db import connections
     connection = connections[using]
-    
+
     # Start transaction
     connection.ensure_connection()
     connection.set_autocommit(False)
-    
+
     try:
         yield connection
         connection.commit()
@@ -417,11 +417,11 @@ configure(
         'PASSWORD': 'db_password',
         'HOST': 'localhost',
         'PORT': '5432',
-        
+
         # Connection options
         'CONN_MAX_AGE': 600,              # Connection pooling (seconds)
         'CONN_HEALTH_CHECKS': True,       # Health checks for pooled connections
-        
+
         # SSL options (PostgreSQL)
         'OPTIONS': {
             'sslmode': 'require',
@@ -453,20 +453,20 @@ configure(
 class Product(Model):
     # Primary key (auto-created if not specified)
     id = fields.BigAutoField(primary_key=True)
-    
+
     # Required field
     name = fields.CharField(max_length=200)
-    
+
     # Optional field
     description = fields.TextField(null=True, blank=True)
-    
+
     # Field with default
     price = fields.DecimalField(max_digits=10, decimal_places=2, default=0)
-    
+
     # Auto timestamps
     created_at = fields.DateTimeField(auto_now_add=True)
     updated_at = fields.DateTimeField(auto_now=True)
-    
+
     # Choices
     STATUS_CHOICES = [
         ('draft', 'Draft'),
@@ -483,7 +483,7 @@ class Category(Model):
 
 class Product(Model):
     name = fields.CharField(max_length=200)
-    
+
     # Foreign key relationship
     category = fields.ForeignKey(
         Category,
@@ -500,22 +500,22 @@ class Product(Model):
     name = fields.CharField(max_length=200)
     price = fields.DecimalField(max_digits=10, decimal_places=2)
     tax_rate = fields.DecimalField(max_digits=4, decimal_places=2, default=0.1)
-    
+
     @property
     def price_with_tax(self):
         """Computed property."""
         return self.price * (1 + self.tax_rate)
-    
+
     def apply_discount(self, percentage):
         """Instance method."""
         self.price = self.price * (1 - percentage / 100)
         self.save()
-    
+
     @classmethod
     def get_expensive_products(cls, min_price):
         """Class method for common queries."""
         return cls.objects.filter(price__gte=min_price)
-    
+
     def __str__(self):
         return f"{self.name} (${self.price})"
 ```
@@ -659,14 +659,14 @@ from django.db import transaction as django_transaction
 
 with django_transaction.atomic():
     Product.objects.create(name="Product 1")
-    
+
     sid = django_transaction.savepoint()
     try:
         Product.objects.create(name="Product 2")
         raise Exception("Rollback to savepoint")
     except Exception:
         django_transaction.savepoint_rollback(sid)
-    
+
     # Product 1 is still created, Product 2 is rolled back
 ```
 
@@ -1057,22 +1057,22 @@ from datetime import datetime
 
 class TimestampedModel(Model):
     """Base model with automatic timestamps."""
-    
+
     created_at = fields.DateTimeField(auto_now_add=True)
     updated_at = fields.DateTimeField(auto_now=True)
-    
+
     class Meta:
         abstract = True
 
 class AuditModel(TimestampedModel):
     """Base model with audit fields."""
-    
+
     created_by = fields.CharField(max_length=100, null=True)
     updated_by = fields.CharField(max_length=100, null=True)
-    
+
     class Meta:
         abstract = True
-    
+
     def save(self, *args, user=None, **kwargs):
         if user:
             if not self.pk:
@@ -1090,13 +1090,13 @@ class Product(AuditModel):
 ```python
 class PublishedManager:
     """Custom manager for published items."""
-    
+
     def __init__(self, model_class):
         self.model = model_class
-    
+
     def all(self):
         return self.model.objects.filter(status='published')
-    
+
     def recent(self, days=7):
         from datetime import timedelta
         from django.utils import timezone
@@ -1107,7 +1107,7 @@ class Article(Model):
     title = fields.CharField(max_length=200)
     status = fields.CharField(max_length=20, default='draft')
     created_at = fields.DateTimeField(auto_now_add=True)
-    
+
     # Custom manager (use as class attribute after definition)
     @classmethod
     def published(cls):
@@ -1126,11 +1126,11 @@ def validate_positive(value):
 class Product(Model):
     name = fields.CharField(max_length=200)
     price = fields.DecimalField(
-        max_digits=10, 
+        max_digits=10,
         decimal_places=2,
         validators=[validate_positive]
     )
-    
+
     def clean(self):
         """Model-level validation."""
         super().clean()
@@ -1184,7 +1184,7 @@ for product in Product.objects.iterator(chunk_size=1000):
 class Product(Model):
     name = fields.CharField(max_length=200, db_index=True)
     sku = fields.CharField(max_length=50, unique=True)  # Unique implies index
-    
+
     class Meta:
         indexes = [
             models.Index(fields=['name', 'created_at']),

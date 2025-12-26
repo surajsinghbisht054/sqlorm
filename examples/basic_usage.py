@@ -10,17 +10,19 @@ This is a standalone script - no Django project structure needed!
 """
 
 # Import SQLORM
-from sqlorm import configure, Model, fields
+from sqlorm import Model, configure, fields
 
 # ============================================================================
 # Step 1: Configure the Database
 # ============================================================================
 
 # For a simple SQLite database (great for development and small applications)
-configure({
-    'ENGINE': 'django.db.backends.sqlite3',
-    'NAME': 'example_todo.sqlite3',
-})
+configure(
+    {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": "example_todo.sqlite3",
+    }
+)
 
 print("✅ Database configured!")
 
@@ -29,16 +31,18 @@ print("✅ Database configured!")
 # Step 2: Define Your Models
 # ============================================================================
 
+
 class Task(Model):
     """
     A simple Task model.
     """
+
     title = fields.CharField(max_length=200)
     is_completed = fields.BooleanField(default=False)
     created_at = fields.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.title} ({'Done' if self.is_completed else 'Pending'})"
