@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-3.0.0-blue" alt="Version">
+  <a href="https://pypi.org/project/django-sqlorm/"><img src="https://img.shields.io/pypi/v/django-sqlorm" alt="PyPI Version"></a>
   <img src="https://img.shields.io/badge/python-3.8%2B-blue" alt="Python">
   <img src="https://img.shields.io/badge/Django-3.2%2B-green" alt="Django">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
@@ -49,6 +49,12 @@
 
 ## 📦 Installation
 
+Install from PyPI:
+
+```bash
+pip install django-sqlorm
+```
+
 Install directly from GitHub:
 
 ```bash
@@ -65,12 +71,10 @@ pip install -e .
 
 ```bash
 # Install with PostgreSQL support
-pip install git+https://github.com/surajsinghbisht054/sqlorm.git
-pip install psycopg2-binary
+pip install django-sqlorm[postgresql]
 
 # Install with MySQL support
-pip install git+https://github.com/surajsinghbisht054/sqlorm.git
-pip install mysqlclient
+pip install django-sqlorm[mysql]
 
 # For development (with test dependencies)
 git clone https://github.com/surajsinghbisht054/sqlorm.git
