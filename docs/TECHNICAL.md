@@ -689,23 +689,33 @@ Unlike Django's full migration system (which tracks migration history in files),
 
 ### How Migrations Work
 
-#### Initial Table Creation
+#### Automatic Schema Updates
 
 ```python
 class Product(Model):
     name = fields.CharField(max_length=200)
     price = fields.DecimalField(max_digits=10, decimal_places=2)
 
-# Create or update table
+# Create table
+Product.migrate()
+
+# Add a new field
+class Product(Model):
+    name = fields.CharField(max_length=200)
+    price = fields.DecimalField(max_digits=10, decimal_places=2)
+    stock = fields.IntegerField(default=0)
+
+# Update table (adds 'stock' column)
 Product.migrate()
 ```
 
 **Under the Hood:**
 
-1. SQLORM uses Django's `schema_editor` to generate DDL
-2. For SQLite: Creates table with all columns
-3. For PostgreSQL/MySQL: Creates table with proper column types
-4. If table already exists, the operation is safely skipped
+1. SQLORM checks if the table exists.
+2. If not, it creates the table using Django's `schema_editor`.
+3. If it exists, it introspects the database to find existing columns.
+4. It compares existing columns with the model fields.
+5. Any missing columns are automatically added using `schema_editor.add_field`.
 
 #### Checking Table Status
 
@@ -721,9 +731,9 @@ table_name = Product.get_table_name()
 fields = Product.get_fields()
 ```
 
-### Schema Changes: Adding Columns
+### Manual Schema Changes
 
-When you add new fields to an existing model, use the migration utilities:
+For complex changes or when you need fine-grained control, you can use the migration utilities:
 
 ```python
 from sqlorm import safe_add_column, add_column

@@ -95,26 +95,40 @@ from sqlorm import configure, Model, fields
 # 1. Configure the database (that's it - no settings.py needed!)
 configure({
     'ENGINE': 'django.db.backends.sqlite3',
-    'NAME': 'my_app.sqlite3',
+    'NAME': 'todo_app.sqlite3',
 })
 
 # 2. Define your models (exactly like Django!)
-class User(Model):
-    name = fields.CharField(max_length=100)
-    email = fields.EmailField(unique=True)
-    is_active = fields.BooleanField(default=True)
+class Task(Model):
+    title = fields.CharField(max_length=200)
+    is_completed = fields.BooleanField(default=False)
     created_at = fields.DateTimeField(auto_now_add=True)
 
 # 3. Create the table
-User.migrate()
+Task.migrate()
 
 # 4. Use Django ORM as usual! 🎉
-user = User.objects.create(name="John", email="john@example.com")
-users = User.objects.filter(is_active=True)
-john = User.objects.get(email="john@example.com")
+task = Task.objects.create(title="Buy groceries")
+pending_tasks = Task.objects.filter(is_completed=False)
+print(f"Pending tasks: {pending_tasks.count()}")
 ```
 
 **That's it!** No `manage.py`, no `startproject`, no `INSTALLED_APPS`. Just Python.
+
+### 🎮 Interactive Example
+
+Check out the [CLI Todo App](examples/todo_cli.py) for a more interactive example:
+
+```bash
+# Add a task
+python examples/todo_cli.py add "Learn SQLORM"
+
+# List tasks
+python examples/todo_cli.py list
+
+# Complete a task
+python examples/todo_cli.py done 1
+```
 
 ---
 
@@ -131,6 +145,7 @@ john = User.objects.get(email="john@example.com")
 7. [Raw SQL](#raw-sql)
 8. [Transactions](#transactions)
 9. [Multiple Databases](#multiple-databases)
+10. [Schema Migrations](#schema-migrations)
 
 ---
 
@@ -582,6 +597,47 @@ configure({
 # Use specific database
 from sqlorm import get_connection
 analytics_conn = get_connection('analytics')
+```
+
+---
+
+### Schema Migrations
+
+SQLORM provides a simplified migration system compared to Django's full migration framework.
+
+#### Automatic Table Creation
+Calling `Model.migrate()` will create the table if it doesn't exist.
+
+```python
+User.migrate()
+```
+
+#### Automatic Column Addition
+If you add a new field to your model and run `migrate()` again, SQLORM will automatically add the missing column to the database table.
+
+```python
+# Initial model
+class User(Model):
+    name = fields.CharField(max_length=100)
+
+User.migrate() # Creates table with 'name'
+
+# Updated model
+class User(Model):
+    name = fields.CharField(max_length=100)
+    age = fields.IntegerField(default=0) # New field
+
+User.migrate() # Adds 'age' column automatically!
+```
+
+#### Manual Schema Changes
+For more complex changes (renaming columns, changing types), you can use the `schema_editor` directly or raw SQL.
+
+```python
+from sqlorm import add_column
+
+# Manually add a column
+add_column('user_table', 'new_col', 'VARCHAR(100)')
 ```
 
 ---

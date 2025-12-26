@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-SQLORM Basic Example
-====================
+SQLORM Basic Example (Todo App)
+===============================
 
 This example demonstrates the basic usage of SQLORM to create a simple
-database with users and perform CRUD operations.
+Todo application.
 
 This is a standalone script - no Django project structure needed!
 """
@@ -19,7 +19,7 @@ from sqlorm import configure, Model, fields
 # For a simple SQLite database (great for development and small applications)
 configure({
     'ENGINE': 'django.db.backends.sqlite3',
-    'NAME': 'example_basic.sqlite3',
+    'NAME': 'example_todo.sqlite3',
 })
 
 print("✅ Database configured!")
@@ -29,30 +29,19 @@ print("✅ Database configured!")
 # Step 2: Define Your Models
 # ============================================================================
 
-class User(Model):
+class Task(Model):
     """
-    A simple User model with basic fields.
-    
-    This works exactly like a Django model!
+    A simple Task model.
     """
-    username = fields.CharField(max_length=100, unique=True)
-    email = fields.EmailField(unique=True)
-    full_name = fields.CharField(max_length=200, blank=True, default="")
-    is_active = fields.BooleanField(default=True)
+    title = fields.CharField(max_length=200)
+    is_completed = fields.BooleanField(default=False)
     created_at = fields.DateTimeField(auto_now_add=True)
-    updated_at = fields.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ['-created_at']
 
-
-class Profile(Model):
-    """
-    User profile with additional information.
-    """
-    bio = fields.TextField(blank=True, default="")
-    website = fields.URLField(blank=True, default="")
-    age = fields.PositiveIntegerField(null=True, blank=True)
+    def __str__(self):
+        return f"{self.title} ({'Done' if self.is_completed else 'Pending'})"
 
 
 # ============================================================================
@@ -60,8 +49,7 @@ class Profile(Model):
 # ============================================================================
 
 print("\n📋 Creating tables...")
-User.migrate()
-Profile.migrate()
+Task.migrate()
 print("✅ Tables created!")
 
 
@@ -69,125 +57,56 @@ print("✅ Tables created!")
 # Step 4: Create Records (CREATE)
 # ============================================================================
 
-print("\n📝 Creating users...")
+print("\n📝 Creating tasks...")
 
-# Method 1: Using objects.create() - Recommended!
-user1 = User.objects.create(
-    username="johndoe",
-    email="john@example.com",
-    full_name="John Doe"
-)
-print(f"   Created: {user1.username} (ID: {user1.id})")
+# Create tasks
+task1 = Task.objects.create(title="Buy groceries")
+print(f"   Created: {task1}")
 
-# Method 2: Create another user using create()
-user2 = User.objects.create(
-    username="janedoe",
-    email="jane@example.com",
-    full_name="Jane Doe"
-)
-print(f"   Created: {user2.username} (ID: {user2.id})")
+task2 = Task.objects.create(title="Walk the dog")
+print(f"   Created: {task2}")
 
-# Method 3: Using get_or_create
-user3, created = User.objects.get_or_create(
-    username="bobsmith",
-    defaults={
-        "email": "bob@example.com",
-        "full_name": "Bob Smith"
-    }
-)
-print(f"   {'Created' if created else 'Found'}: {user3.username} (ID: {user3.id})")
+task3 = Task.objects.create(title="Learn SQLORM")
+print(f"   Created: {task3}")
 
 
 # ============================================================================
 # Step 5: Query Records (READ)
 # ============================================================================
 
-print("\n🔍 Querying users...")
+print("\n🔍 Querying tasks...")
 
-# Get all users
-all_users = User.objects.all()
-print(f"   Total users: {all_users.count()}")
+# Get all tasks
+all_tasks = Task.objects.all()
+print(f"   Total tasks: {all_tasks.count()}")
 
-# Get a specific user
-john = User.objects.get(username="johndoe")
-print(f"   Found John: {john.email}")
-
-# Filter users
-active_users = User.objects.filter(is_active=True)
-print(f"   Active users: {active_users.count()}")
-
-# Complex filters
-users_with_j = User.objects.filter(username__startswith="j")
-print(f"   Users starting with 'j': {users_with_j.count()}")
-
-# First and last
-first_user = User.objects.first()
-print(f"   First user: {first_user.username}")
+# Filter pending tasks
+pending = Task.objects.filter(is_completed=False)
+print(f"   Pending tasks: {pending.count()}")
 
 
 # ============================================================================
 # Step 6: Update Records (UPDATE)
 # ============================================================================
 
-print("\n✏️  Updating users...")
+print("\n✏️  Completing a task...")
 
-# Method 1: Update single object
-john = User.objects.get(username="johndoe")
-john.full_name = "John William Doe"
-john.save()
-print(f"   Updated John's full name: {john.full_name}")
-
-# Method 2: Bulk update
-User.objects.filter(full_name="").update(full_name="Unknown")
-print("   Updated all users without full names")
+# Mark 'Learn SQLORM' as completed
+learn_task = Task.objects.get(title="Learn SQLORM")
+learn_task.is_completed = True
+learn_task.save()
+print(f"   Updated: {learn_task}")
 
 
 # ============================================================================
 # Step 7: Delete Records (DELETE)
 # ============================================================================
 
-print("\n🗑️  Deleting users...")
+print("\n🗑️  Deleting completed tasks...")
 
-# Create a temporary user to delete
-temp_user = User.objects.create(
-    username="tempuser",
-    email="temp@example.com"
-)
-print(f"   Created temporary user: {temp_user.username}")
-
-# Delete single object
-temp_user.delete()
-print("   Deleted temporary user")
-
-# Bulk delete (commented out to preserve data)
-# User.objects.filter(is_active=False).delete()
-
-
-# ============================================================================
-# Step 8: Advanced Queries
-# ============================================================================
-
-print("\n🚀 Advanced queries...")
-
-# Count
-count = User.objects.count()
-print(f"   Total users: {count}")
-
-# Exists
-has_john = User.objects.filter(username="johndoe").exists()
-print(f"   John exists: {has_john}")
-
-# Values (get dictionaries instead of model instances)
-usernames = User.objects.values_list('username', flat=True)
-print(f"   Usernames: {list(usernames)}")
-
-# Order by
-ordered_users = User.objects.order_by('username')
-print(f"   Users ordered by username: {[u.username for u in ordered_users]}")
-
-# Exclude
-not_john = User.objects.exclude(username="johndoe")
-print(f"   Users except John: {[u.username for u in not_john]}")
+# Delete completed tasks
+deleted_count, _ = Task.objects.filter(is_completed=True).delete()
+print(f"   Deleted {deleted_count} completed tasks")
 
 
 # ============================================================================
@@ -195,5 +114,4 @@ print(f"   Users except John: {[u.username for u in not_john]}")
 # ============================================================================
 
 print("\n🎉 Example complete!")
-print(f"   Database file: example_basic.sqlite3")
-print("   You can now inspect the database using any SQLite browser.")
+print(f"   Database file: example_todo.sqlite3")

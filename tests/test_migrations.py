@@ -98,6 +98,40 @@ class TestBasicMigrations:
         # After migration
         MigrationTest3.migrate()
         assert MigrationTest3.table_exists() is True
+
+    def test_automatic_column_addition(self):
+        """Test that migrate() automatically adds missing columns."""
+        from sqlorm import Model, fields
+        from sqlorm.base import get_table_columns
+        
+        # Define initial model
+        class AutoMigrateTest(Model):
+            name = fields.CharField(max_length=100)
+            
+        # Create table
+        AutoMigrateTest.migrate()
+        assert AutoMigrateTest.table_exists()
+        
+        # Verify columns
+        columns = get_table_columns(AutoMigrateTest.get_table_name())
+        assert 'name' in columns
+        assert 'age' not in columns
+        
+        # Define updated model with same table name
+        class AutoMigrateTestUpdated(Model):
+            name = fields.CharField(max_length=100)
+            age = fields.IntegerField(default=0)
+            
+            class Meta:
+                db_table = AutoMigrateTest.get_table_name()
+        
+        # Run migrate again
+        AutoMigrateTestUpdated.migrate()
+        
+        # Verify new column exists
+        columns = get_table_columns(AutoMigrateTest.get_table_name())
+        assert 'name' in columns
+        assert 'age' in columns
     
     def test_drop_table(self):
         """Test dropping a table."""

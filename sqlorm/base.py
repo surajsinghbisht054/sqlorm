@@ -177,7 +177,17 @@ class Model(metaclass=ModelMeta):
         except Exception as e:
             # Django might not be configured yet, defer creation
             logger.debug(f"Deferred Django model creation for {cls.__name__}: {e}")
-    
+
+        # Monkey patch __str__ if it's defined in the subclass
+        if '__str__' in cls.__dict__:
+             # We need to wrap it to handle 'self' correctly when called from Django model
+             original_str = cls.__str__
+             def wrapped_str(self):
+                 # Create a temporary instance of our Model class to pass to __str__
+                 # This is a bit hacky but necessary because Django models are different classes
+                 return original_str(self)
+             cls._django_model.__str__ = wrapped_str
+             
     @classmethod
     def _create_django_model(cls):
         """
@@ -307,18 +317,34 @@ class Model(metaclass=ModelMeta):
             # Get the connection for the specified database
             connection = connections[db_alias]
             
+            # Check if table exists
+            with connection.cursor() as cursor:
+                table_list = connection.introspection.table_names(cursor)
+            
+            table_name = cls._django_model._meta.db_table
+            
             with connection.schema_editor() as schema_editor:
-                try:
+                if table_name not in table_list:
                     schema_editor.create_model(cls._django_model)
                     if verbosity > 0:
                         logger.info(f"Created table for {cls.__name__} in '{db_alias}' database")
-                except Exception as e:
-                    # Table might already exist
-                    if "already exists" in str(e).lower():
-                        if verbosity > 0:
-                            logger.info(f"Table for {cls.__name__} already exists in '{db_alias}' database")
-                    else:
-                        raise
+                else:
+                    # Table exists, check for missing columns
+                    if verbosity > 0:
+                        logger.info(f"Table for {cls.__name__} already exists in '{db_alias}' database. Checking for schema updates...")
+                        
+                    existing_columns = get_table_columns(table_name, using=db_alias)
+                    existing_columns_lower = [c.lower() for c in existing_columns]
+                    
+                    for field in cls._django_model._meta.local_fields:
+                        if field.column.lower() not in existing_columns_lower:
+                            try:
+                                schema_editor.add_field(cls._django_model, field)
+                                if verbosity > 0:
+                                    logger.info(f"Added column '{field.column}' to table '{table_name}'")
+                            except Exception as e:
+                                logger.error(f"Failed to add column '{field.column}': {e}")
+                                raise
             
             return True
             
@@ -543,27 +569,8 @@ def get_table_columns(table_name: str, using: str = 'default') -> List[str]:
         from django.db import connections
         
         connection = connections[using]
-        cursor = connection.cursor()
-        
-        # Get table info (works for SQLite, PostgreSQL, MySQL)
-        if connection.vendor == 'sqlite':
-            cursor.execute(f"PRAGMA table_info({table_name})")
-            return [row[1] for row in cursor.fetchall()]
-        elif connection.vendor == 'postgresql':
-            cursor.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = %s
-                ORDER BY ordinal_position
-            """, [table_name])
-            return [row[0] for row in cursor.fetchall()]
-        elif connection.vendor == 'mysql':
-            cursor.execute(f"DESCRIBE {table_name}")
-            return [row[0] for row in cursor.fetchall()]
-        else:
-            # Generic fallback
-            cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
-            return [desc[0] for desc in cursor.description] if cursor.description else []
+        with connection.cursor() as cursor:
+            return [col.name for col in connection.introspection.get_table_description(cursor, table_name)]
     except Exception as e:
         logger.error(f"Failed to get columns for {table_name}: {e}")
         return []
