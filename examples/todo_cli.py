@@ -7,8 +7,14 @@ A simple CLI Todo application demonstrating SQLORM usage.
 """
 
 import sys
+import os
+
+# Add parent directory to path so we can import sqlorm
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
 from datetime import datetime
+from django.utils import timezone
 from sqlorm import configure, Model, fields
 
 # ============================================================================
@@ -69,9 +75,11 @@ def list_tasks(show_all=False):
 def complete_task(task_id):
     try:
         task = Task.objects.get(id=task_id)
-        task.complete()
+        task.is_completed = True
+        task.completed_at = timezone.now()
+        task.save()
         print(f"Completed: {task.title}")
-    except Task.DoesNotExist:
+    except Task._django_model.DoesNotExist:
         print(f"Task {task_id} not found!")
 
 def delete_task(task_id):
@@ -80,7 +88,7 @@ def delete_task(task_id):
         title = task.title
         task.delete()
         print(f"Deleted: {title}")
-    except Task.DoesNotExist:
+    except Task._django_model.DoesNotExist:
         print(f"Task {task_id} not found!")
 
 def clear_completed():
