@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.0.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/python-3.8%2B-blue" alt="Python">
   <img src="https://img.shields.io/badge/Django-3.2%2B-green" alt="Django">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
@@ -90,7 +90,7 @@ pip install -e ".[dev]"
 Here's a complete working example in just a few lines:
 
 ```python
-from sqlorm import configure, Model, fields
+from sqlorm import configure, Model, fields, create_tables
 
 # 1. Configure the database (that's it - no settings.py needed!)
 configure({
@@ -104,8 +104,8 @@ class Task(Model):
     is_completed = fields.BooleanField(default=False)
     created_at = fields.DateTimeField(auto_now_add=True)
 
-# 3. Create the table
-Task.migrate()
+# 3. Create the table (for quick start without migrations)
+create_tables()
 
 # 4. Use Django ORM as usual! 🎉
 task = Task.objects.create(title="Buy groceries")
@@ -115,19 +115,23 @@ print(f"Pending tasks: {pending_tasks.count()}")
 
 **That's it!** No `manage.py`, no `startproject`, no `INSTALLED_APPS`. Just Python.
 
-### 🎮 Interactive Example
+### 🛠 CLI Usage (Migrations)
 
-Check out the [CLI Todo App](examples/todo_cli.py) for a more interactive example:
+For production applications, you should use migrations instead of `create_tables()`.
+
+1. **Create a script with your models** (e.g., `models.py`).
+2. **Configure with `migrations_dir`**:
+   ```python
+   configure(..., migrations_dir='./migrations')
+   ```
+3. **Run commands**:
 
 ```bash
-# Add a task
-python examples/todo_cli.py add "Learn SQLORM"
+# Create migrations
+sqlorm makemigrations --models models.py
 
-# List tasks
-python examples/todo_cli.py list
-
-# Complete a task
-python examples/todo_cli.py done 1
+# Apply migrations
+sqlorm migrate --models models.py
 ```
 
 ---
@@ -269,9 +273,6 @@ class Article(Model):
         ordering = ['-created_at']
         verbose_name = 'Article'
         verbose_name_plural = 'Articles'
-
-# Create the table
-Article.migrate()
 ```
 
 ---
@@ -603,42 +604,35 @@ analytics_conn = get_connection('analytics')
 
 ### Schema Migrations
 
-SQLORM provides a simplified migration system compared to Django's full migration framework.
+SQLORM supports Django's full migration system via the CLI.
 
-#### Automatic Table Creation
-Calling `Model.migrate()` will create the table if it doesn't exist.
-
-```python
-User.migrate()
-```
-
-#### Automatic Column Addition
-If you add a new field to your model and run `migrate()` again, SQLORM will automatically add the missing column to the database table.
+#### 1. Setup
+Ensure your `configure()` call includes `migrations_dir`:
 
 ```python
-# Initial model
-class User(Model):
-    name = fields.CharField(max_length=100)
-
-User.migrate() # Creates table with 'name'
-
-# Updated model
-class User(Model):
-    name = fields.CharField(max_length=100)
-    age = fields.IntegerField(default=0) # New field
-
-User.migrate() # Adds 'age' column automatically!
+configure(
+    {...},
+    migrations_dir='./migrations'
+)
 ```
 
-#### Manual Schema Changes
-For more complex changes (renaming columns, changing types), you can use the `schema_editor` directly or raw SQL.
+#### 2. Create Migrations
+When you change your models, run:
 
-```python
-from sqlorm import add_column
-
-# Manually add a column
-add_column('user_table', 'new_col', 'VARCHAR(100)')
+```bash
+sqlorm makemigrations --models your_script.py
 ```
+
+This will create migration files in your specified `migrations_dir`.
+
+#### 3. Apply Migrations
+To apply changes to the database:
+
+```bash
+sqlorm migrate --models your_script.py
+```
+
+This tracks applied migrations in the `django_migrations` table, just like standard Django.
 
 ---
 
@@ -651,7 +645,7 @@ Already using Django? SQLORM is designed to be 100% compatible:
 | `from django.db import models` | `from sqlorm import fields` |
 | `class User(models.Model):` | `class User(Model):` |
 | `models.CharField(...)` | `fields.CharField(...)` |
-| `python manage.py migrate` | `User.migrate()` |
+| `python manage.py migrate` | `sqlorm migrate ...` |
 | `User.objects.all()` | `User.objects.all()` ✅ Same! |
 
 **Your Django knowledge transfers directly!**
