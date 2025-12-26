@@ -19,7 +19,7 @@ from datetime import datetime
 from decimal import Decimal
 
 # Import SQLORM
-from sqlorm import Model, configure, fields
+from sqlorm import Model, configure, create_all_tables, fields
 
 # ============================================================================
 # PostgreSQL Configuration
@@ -85,8 +85,7 @@ class Article(Model):
 
 # Create tables
 print("\n📋 Creating tables...")
-Author.migrate()
-Article.migrate()
+create_all_tables()
 print("✅ Tables created!")
 
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sqlorm"
-version = "2.1.0"
+version = "3.0.0"
 authors = [
     { name = "S.S.B", email = "surajsinghbisht054@gmail.com" }
 ]
@@ -78,6 +78,9 @@ all = [
     "mysqlclient>=2.1",
     "pyyaml>=6.0",
 ]
+
+[project.scripts]
+sqlorm = "sqlorm.cli:main"
 
 [project.urls]
 "Homepage" = "https://github.com/surajsinghbisht054/sqlorm"

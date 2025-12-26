@@ -2,18 +2,16 @@
 SQLORM - Django ORM for Standalone Scripts
 ===========================================
 
-A lightweight wrapper around Django's powerful ORM that allows you to use
-Django's database functionality in standalone Python scripts without
-requiring a full Django project structure.
+A lightweight library that lets you use Django's powerful ORM in standalone
+Python scripts without requiring a full Django project structure.
 
 Key Features:
 - Use Django's mature, battle-tested ORM in any Python script
 - Support for multiple database backends (SQLite, PostgreSQL, MySQL, etc.)
 - Easy configuration with minimal boilerplate
 - Full access to Django's model fields, querysets, and migrations
-- Compatible with existing Django knowledge
-- Serialization support (to_dict, to_json)
-- Type hints for better IDE support
+- CLI commands for migrations: `sqlorm makemigrations`, `sqlorm migrate`
+- No manage.py, settings.py, or Django project structure required
 
 Quick Start:
     >>> from sqlorm import configure, Model, fields
@@ -30,8 +28,13 @@ Quick Start:
     ...     email = fields.EmailField(unique=True)
     ...     age = fields.IntegerField(null=True, blank=True)
     >>>
-    >>> # Create tables
-    >>> User.migrate()
+    >>> # Run migrations (from command line):
+    >>> # $ sqlorm makemigrations
+    >>> # $ sqlorm migrate
+    >>>
+    >>> # Or quick sync (development only):
+    >>> from sqlorm import create_all_tables
+    >>> create_all_tables()
     >>>
     >>> # Use Django ORM as usual
     >>> user = User.objects.create(name="John", email="john@example.com")
@@ -40,8 +43,6 @@ Quick Start:
     >>> # Serialize to dict/JSON
     >>> user.to_dict()
     {'id': 1, 'name': 'John', 'email': 'john@example.com'}
-    >>> user.to_json()
-    '{"id": 1, "name": "John", "email": "john@example.com"}'
 
 Author: S.S.B (surajsinghbisht054@gmail.com)
 License: MIT
@@ -50,31 +51,38 @@ Repository: https://github.com/surajsinghbisht054/sqlorm
 
 from typing import TYPE_CHECKING
 
-__version__ = "2.1.0"
+__version__ = "3.0.0"
 __author__ = "S.S.B"
 __email__ = "surajsinghbisht054@gmail.com"
 __license__ = "MIT"
 
-from .base import (  # Migration utilities
+# Base model and utilities
+from .base import (  # Schema utilities
     Model,
     add_column,
-    backup_table,
-    change_column_type,
     clear_registry,
     column_exists,
     create_all_tables,
+    create_table,
     get_registered_models,
     get_schema_diff,
     get_table_columns,
     migrate_all,
-    recreate_table,
     rename_column,
-    restore_table,
     safe_add_column,
     sync_schema,
 )
 
-# Core imports
+# CLI functions (for programmatic use)
+from .cli import (
+    inspectdb,
+    makemigrations,
+    migrate,
+    showmigrations,
+    syncdb,
+)
+
+# Core imports - Configuration
 from .config import (
     add_database,
     configure,
@@ -83,9 +91,12 @@ from .config import (
     configure_from_file,
     get_database_aliases,
     get_database_config,
+    get_migrations_dir,
     get_settings,
     is_configured,
 )
+
+# Connection utilities
 from .connection import (
     close_all_connections,
     close_connection,
@@ -97,6 +108,8 @@ from .connection import (
     get_table_names,
     transaction,
 )
+
+# Exceptions
 from .exceptions import (
     ConfigurationError,
     ConnectionError,
@@ -106,16 +119,17 @@ from .exceptions import (
     SQLORMError,
     ValidationError,
 )
+
+# Fields proxy
 from .fields import fields
 
-# Convenience re-exports from Django
+# Expose aggregation functions from Django
 try:
     from django.db.models import (
         Avg,
         Case,
         Count,
         Exists,
-        ExpressionWrapper,
         F,
         Max,
         Min,
@@ -127,23 +141,9 @@ try:
         Value,
         When,
     )
-    from django.db.models.functions import (
-        Cast,
-        Coalesce,
-        Concat,
-        Greatest,
-        Least,
-        Length,
-        Lower,
-        Now,
-        Trim,
-        TruncDate,
-        TruncMonth,
-        TruncYear,
-        Upper,
-    )
 except ImportError:
-    pass  # Django not installed yet
+    # Django not installed yet
+    pass
 
 __all__ = [
     # Version info
@@ -159,75 +159,63 @@ __all__ = [
     "add_database",
     "get_database_aliases",
     "get_database_config",
+    "get_migrations_dir",
     "get_settings",
     "is_configured",
-    # Models
+    # Model
     "Model",
-    "get_registered_models",
-    "create_all_tables",
-    "migrate_all",
-    "clear_registry",
-    # Fields
     "fields",
-    # Connection
-    "get_connection",
-    "close_connection",
+    "get_registered_models",
+    "clear_registry",
+    # Quick migrations
+    "create_all_tables",
+    "create_table",
+    "migrate_all",
+    # Schema utilities
+    "add_column",
+    "column_exists",
+    "get_schema_diff",
+    "get_table_columns",
+    "rename_column",
+    "safe_add_column",
+    "sync_schema",
+    # Connections
     "close_all_connections",
+    "close_connection",
     "execute_raw_sql",
     "execute_raw_sql_dict",
-    "transaction",
+    "get_connection",
     "get_database_info",
-    "get_table_names",
     "get_table_description",
-    # Migration utilities
-    "get_table_columns",
-    "column_exists",
-    "add_column",
-    "safe_add_column",
-    "rename_column",
-    "change_column_type",
-    "recreate_table",
-    "backup_table",
-    "restore_table",
-    "get_schema_diff",
-    "sync_schema",
+    "get_table_names",
+    "transaction",
+    # CLI functions
+    "makemigrations",
+    "migrate",
+    "showmigrations",
+    "syncdb",
+    "inspectdb",
     # Exceptions
-    "SQLORMError",
     "ConfigurationError",
-    "ModelError",
-    "MigrationError",
     "ConnectionError",
-    "ValidationError",
+    "MigrationError",
+    "ModelError",
     "QueryError",
-    # Django re-exports - Query building
-    "Q",
+    "SQLORMError",
+    "ValidationError",
+    # Django aggregations
+    "Avg",
+    "Count",
     "F",
+    "Max",
+    "Min",
+    "Q",
+    "Sum",
     "Value",
     "Case",
     "When",
-    "OuterRef",
     "Subquery",
+    "OuterRef",
     "Exists",
-    "ExpressionWrapper",
-    # Django re-exports - Aggregations
-    "Count",
-    "Sum",
-    "Avg",
-    "Max",
-    "Min",
     "Prefetch",
-    # Django re-exports - Functions
-    "Coalesce",
-    "Concat",
-    "Length",
-    "Lower",
-    "Upper",
-    "Trim",
-    "Now",
-    "TruncDate",
-    "TruncMonth",
-    "TruncYear",
-    "Cast",
-    "Greatest",
-    "Least",
 ]

@@ -10,7 +10,7 @@ This is a standalone script - no Django project structure needed!
 """
 
 # Import SQLORM
-from sqlorm import Model, configure, fields
+from sqlorm import Model, configure, create_all_tables, fields
 
 # ============================================================================
 # Step 1: Configure the Database
@@ -53,7 +53,7 @@ class Task(Model):
 # ============================================================================
 
 print("\n📋 Creating tables...")
-Task.migrate()
+create_all_tables()  # Quick sync - creates tables without migrations
 print("✅ Tables created!")
 
 

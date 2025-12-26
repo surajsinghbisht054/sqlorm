@@ -743,11 +743,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👤 Author
 
-**S.S.B**
-
 - Email: surajsinghbisht054@gmail.com
 - GitHub: [@surajsinghbisht054](https://github.com/surajsinghbisht054)
-- Blog: https://bitforestinfo.blogspot.com
 
 ---
 

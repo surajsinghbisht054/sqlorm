@@ -31,7 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Developer Experience
 - Added `py.typed` marker for PEP 561 compliance
 - Python 3.13 support
-- GitHub Actions CI/CD workflow
 - Pre-commit configuration for code quality
 - Improved type hints throughout codebase
 - Additional Django function re-exports (Coalesce, Concat, Now, etc.)

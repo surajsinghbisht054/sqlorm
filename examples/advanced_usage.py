@@ -25,6 +25,7 @@ from sqlorm import (
     Q,
     Sum,
     configure,
+    create_all_tables,
     execute_raw_sql,
     fields,
     get_connection,
@@ -102,9 +103,7 @@ class Order(Model):
 
 # Create tables
 print("\n📋 Creating tables...")
-Category.migrate()
-Product.migrate()
-Order.migrate()
+create_all_tables()
 print("✅ Tables created!")
 
 

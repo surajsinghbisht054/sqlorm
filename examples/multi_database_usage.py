@@ -30,6 +30,8 @@ from sqlorm import (
     Sum,
     add_database,
     configure_databases,
+    create_all_tables,
+    create_table,
     fields,
     get_database_aliases,
     get_database_config,
@@ -144,14 +146,14 @@ print("\n" + "=" * 70)
 print("Step 3: Create Tables (Auto-routed Migrations)")
 print("=" * 70)
 
-# Each model's migrate() automatically uses the correct database!
-User.migrate()
+# Each model's table is created in the correct database based on _using!
+create_table(User)
 print("   ✓ User table created in 'default' database")
 
-PageView.migrate()
+create_table(PageView)
 print("   ✓ PageView table created in 'analytics' database")
 
-AppLog.migrate()
+create_table(AppLog)
 print("   ✓ AppLog table created in 'logs' database")
 
 
@@ -318,7 +320,7 @@ class ArchivedUser(Model):
     archived_at = fields.DateTimeField(auto_now_add=True)
 
 
-ArchivedUser.migrate()
+create_table(ArchivedUser)
 print(f"   Created ArchivedUser table in 'archive' database")
 
 
