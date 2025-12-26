@@ -10,7 +10,8 @@ Exception Hierarchy:
     ├── ConfigurationError
     ├── ModelError
     ├── MigrationError
-    └── ConnectionError
+    ├── ConnectionError
+    └── ValidationError
 
 Example:
     >>> from sqlorm.exceptions import ConfigurationError
@@ -21,6 +22,8 @@ Example:
     ...     print(f"Configuration failed: {e}")
 """
 
+from typing import Any, Dict, List, Optional
+
 
 class SQLORMError(Exception):
     """
@@ -29,13 +32,46 @@ class SQLORMError(Exception):
     All SQLORM-specific exceptions inherit from this class,
     allowing you to catch all SQLORM errors with a single except clause.
     
+    Attributes:
+        message: Human-readable error message
+        details: Additional context dictionary
+        hint: Suggested fix or action
+    
     Example:
         >>> try:
         ...     # SQLORM operations
         ... except SQLORMError as e:
         ...     print(f"SQLORM error: {e}")
+        ...     if e.hint:
+        ...         print(f"Hint: {e.hint}")
     """
-    pass
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+        hint: Optional[str] = None
+    ):
+        self.message = message
+        self.details = details or {}
+        self.hint = hint
+        super().__init__(self._format_message())
+    
+    def _format_message(self) -> str:
+        """Format the full error message."""
+        msg = self.message
+        if self.hint:
+            msg += f"\n  Hint: {self.hint}"
+        return msg
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert exception to dictionary for logging/serialization."""
+        return {
+            "error_type": self.__class__.__name__,
+            "message": self.message,
+            "details": self.details,
+            "hint": self.hint,
+        }
 
 
 class ConfigurationError(SQLORMError):
@@ -54,7 +90,20 @@ class ConfigurationError(SQLORMError):
         ... except ConfigurationError as e:
         ...     print(f"Config error: {e}")
     """
-    pass
+    
+    def __init__(
+        self,
+        message: str,
+        missing_keys: Optional[List[str]] = None,
+        invalid_keys: Optional[Dict[str, str]] = None,
+        hint: Optional[str] = None
+    ):
+        details = {}
+        if missing_keys:
+            details["missing_keys"] = missing_keys
+        if invalid_keys:
+            details["invalid_keys"] = invalid_keys
+        super().__init__(message, details=details, hint=hint)
 
 
 class ModelError(SQLORMError):
@@ -73,7 +122,20 @@ class ModelError(SQLORMError):
         ... except ModelError as e:
         ...     print(f"Model error: {e}")
     """
-    pass
+    
+    def __init__(
+        self,
+        message: str,
+        model_name: Optional[str] = None,
+        field_name: Optional[str] = None,
+        hint: Optional[str] = None
+    ):
+        details = {}
+        if model_name:
+            details["model"] = model_name
+        if field_name:
+            details["field"] = field_name
+        super().__init__(message, details=details, hint=hint)
 
 
 class MigrationError(SQLORMError):
@@ -91,7 +153,20 @@ class MigrationError(SQLORMError):
         ... except MigrationError as e:
         ...     print(f"Migration error: {e}")
     """
-    pass
+    
+    def __init__(
+        self,
+        message: str,
+        table_name: Optional[str] = None,
+        operation: Optional[str] = None,
+        hint: Optional[str] = None
+    ):
+        details = {}
+        if table_name:
+            details["table"] = table_name
+        if operation:
+            details["operation"] = operation
+        super().__init__(message, details=details, hint=hint)
 
 
 class ConnectionError(SQLORMError):
@@ -110,7 +185,21 @@ class ConnectionError(SQLORMError):
         ... except ConnectionError as e:
         ...     print(f"Connection error: {e}")
     """
-    pass
+    
+    def __init__(
+        self,
+        message: str,
+        database_alias: Optional[str] = None,
+        sql: Optional[str] = None,
+        hint: Optional[str] = None
+    ):
+        details = {}
+        if database_alias:
+            details["database"] = database_alias
+        if sql:
+            # Truncate long SQL for readability
+            details["sql"] = sql[:200] + "..." if len(sql) > 200 else sql
+        super().__init__(message, details=details, hint=hint)
 
 
 class ValidationError(SQLORMError):
@@ -126,4 +215,45 @@ class ValidationError(SQLORMError):
         ... except ValidationError as e:
         ...     print(f"Validation error: {e}")
     """
-    pass
+    
+    def __init__(
+        self,
+        message: str,
+        field_errors: Optional[Dict[str, List[str]]] = None,
+        hint: Optional[str] = None
+    ):
+        details = {}
+        if field_errors:
+            details["field_errors"] = field_errors
+        super().__init__(message, details=details, hint=hint)
+
+
+class QueryError(SQLORMError):
+    """
+    Exception raised when a database query fails.
+    
+    This is raised when:
+    - Query syntax is invalid
+    - Query references non-existent fields
+    - Query constraints are violated
+    
+    Example:
+        >>> try:
+        ...     User.objects.filter(invalid_field=True)
+        ... except QueryError as e:
+        ...     print(f"Query error: {e}")
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        query: Optional[str] = None,
+        model_name: Optional[str] = None,
+        hint: Optional[str] = None
+    ):
+        details = {}
+        if query:
+            details["query"] = query[:500] + "..." if len(query) > 500 else query
+        if model_name:
+            details["model"] = model_name
+        super().__init__(message, details=details, hint=hint)

@@ -47,7 +47,7 @@ class ModelInstanceWrapper:
     Wrapper that combines a Django model instance with SQLORM model methods.
     
     This allows custom methods defined on SQLORM models to be accessible
-    on instances returned from querysets.
+    on instances returned from querysets, and provides serialization utilities.
     """
     
     def __init__(self, django_instance, sqlorm_class):
@@ -82,6 +82,184 @@ class ModelInstanceWrapper:
             return sqlorm_class.__str__(self)
         django_instance = object.__getattribute__(self, '_django_instance')
         return str(django_instance)
+
+    def __eq__(self, other):
+        """Check equality with another instance."""
+        django_instance = object.__getattribute__(self, '_django_instance')
+        if isinstance(other, ModelInstanceWrapper):
+            other_instance = object.__getattribute__(other, '_django_instance')
+            return django_instance.pk == other_instance.pk
+        if hasattr(other, 'pk'):
+            return django_instance.pk == other.pk
+        return False
+
+    def __hash__(self):
+        """Make instance hashable for use in sets and as dict keys."""
+        django_instance = object.__getattribute__(self, '_django_instance')
+        return hash((type(django_instance).__name__, django_instance.pk))
+
+    def to_dict(
+        self,
+        fields: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+        include_pk: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Convert the model instance to a dictionary.
+        
+        Args:
+            fields: List of field names to include (None = all fields)
+            exclude: List of field names to exclude
+            include_pk: Whether to include the primary key
+        
+        Returns:
+            Dictionary representation of the model instance
+        
+        Example:
+            >>> user = User.objects.get(id=1)
+            >>> user.to_dict()
+            {'id': 1, 'name': 'John', 'email': 'john@example.com'}
+            >>> user.to_dict(fields=['name', 'email'])
+            {'name': 'John', 'email': 'john@example.com'}
+            >>> user.to_dict(exclude=['email'])
+            {'id': 1, 'name': 'John'}
+        """
+        django_instance = object.__getattribute__(self, '_django_instance')
+        exclude = exclude or []
+        result = {}
+        
+        model_fields = django_instance._meta.get_fields()
+        for field in model_fields:
+            # Skip reverse relations and many-to-many for simple serialization
+            if not hasattr(field, 'attname'):
+                continue
+            
+            name = field.name
+            
+            # Apply field filters
+            if fields is not None and name not in fields:
+                if not (include_pk and field.primary_key):
+                    continue
+            if name in exclude:
+                continue
+            if not include_pk and field.primary_key:
+                continue
+            
+            value = getattr(django_instance, name, None)
+            
+            # Handle datetime objects for JSON serialization
+            if hasattr(value, 'isoformat'):
+                value = value.isoformat()
+            # Handle Decimal
+            elif hasattr(value, '__float__'):
+                try:
+                    value = float(value)
+                except (TypeError, ValueError):
+                    value = str(value)
+            # Handle UUID
+            elif hasattr(value, 'hex'):
+                value = str(value)
+            
+            result[name] = value
+        
+        return result
+
+    def to_json(
+        self,
+        fields: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+        include_pk: bool = True,
+        indent: Optional[int] = None
+    ) -> str:
+        """
+        Convert the model instance to a JSON string.
+        
+        Args:
+            fields: List of field names to include (None = all fields)
+            exclude: List of field names to exclude
+            include_pk: Whether to include the primary key
+            indent: JSON indentation level (None for compact)
+        
+        Returns:
+            JSON string representation of the model instance
+        
+        Example:
+            >>> user = User.objects.get(id=1)
+            >>> user.to_json()
+            '{"id": 1, "name": "John", "email": "john@example.com"}'
+            >>> user.to_json(indent=2)
+            '{\\n  "id": 1,\\n  "name": "John"\\n}'
+        """
+        import json
+        data = self.to_dict(fields=fields, exclude=exclude, include_pk=include_pk)
+        return json.dumps(data, indent=indent, default=str)
+
+    def refresh(self) -> "ModelInstanceWrapper":
+        """
+        Reload the instance from the database.
+        
+        Returns:
+            Self for chaining
+        
+        Example:
+            >>> user.name = "Changed"
+            >>> user.refresh()  # Reverts to database value
+        """
+        django_instance = object.__getattribute__(self, '_django_instance')
+        django_instance.refresh_from_db()
+        return self
+
+    def update(self, **kwargs) -> "ModelInstanceWrapper":
+        """
+        Update fields and save in one operation.
+        
+        Args:
+            **kwargs: Field names and values to update
+        
+        Returns:
+            Self for chaining
+        
+        Example:
+            >>> user.update(name="New Name", is_active=False)
+        """
+        django_instance = object.__getattribute__(self, '_django_instance')
+        for key, value in kwargs.items():
+            setattr(django_instance, key, value)
+        django_instance.save(update_fields=list(kwargs.keys()))
+        return self
+
+    def clone(self, **overrides) -> "ModelInstanceWrapper":
+        """
+        Create a copy of this instance with optional field overrides.
+        
+        The clone is not saved to the database automatically.
+        
+        Args:
+            **overrides: Field values to override in the clone
+        
+        Returns:
+            New unsaved model instance
+        
+        Example:
+            >>> original = User.objects.get(id=1)
+            >>> clone = original.clone(name="Clone of " + original.name)
+            >>> clone.save()
+        """
+        django_instance = object.__getattribute__(self, '_django_instance')
+        sqlorm_class = object.__getattribute__(self, '_sqlorm_class')
+        
+        # Get all field values
+        data = {}
+        for field in django_instance._meta.get_fields():
+            if hasattr(field, 'attname') and not field.primary_key:
+                data[field.name] = getattr(django_instance, field.name, None)
+        
+        # Apply overrides
+        data.update(overrides)
+        
+        # Create new instance
+        new_instance = sqlorm_class._django_model(**data)
+        return ModelInstanceWrapper(new_instance, sqlorm_class)
 
 
 class WrappedQuerySet:
@@ -755,7 +933,122 @@ class Model(metaclass=ModelMeta):
         """
         cls._ensure_initialized()
         return [f.name for f in cls._django_model._meta.get_fields()]
-    
+
+    @classmethod
+    def get_field_info(cls) -> Dict[str, Dict[str, Any]]:
+        """
+        Get detailed information about all fields in this model.
+        
+        Returns:
+            Dictionary mapping field names to their properties including
+            type, null, blank, default, primary_key, unique, etc.
+        
+        Example:
+            >>> info = User.get_field_info()
+            >>> print(info['email'])
+            {'type': 'EmailField', 'null': False, 'unique': True, ...}
+        """
+        cls._ensure_initialized()
+        field_info = {}
+        for field in cls._django_model._meta.get_fields():
+            if hasattr(field, 'get_internal_type'):
+                field_info[field.name] = {
+                    'type': field.get_internal_type(),
+                    'null': getattr(field, 'null', None),
+                    'blank': getattr(field, 'blank', None),
+                    'default': getattr(field, 'default', None),
+                    'primary_key': getattr(field, 'primary_key', False),
+                    'unique': getattr(field, 'unique', False),
+                    'max_length': getattr(field, 'max_length', None),
+                    'db_column': getattr(field, 'db_column', None) or field.name,
+                }
+        return field_info
+
+    @classmethod
+    def count(cls, using: Optional[str] = None) -> int:
+        """
+        Get the count of all records for this model.
+        
+        Args:
+            using: Database alias (overrides model's _using)
+        
+        Returns:
+            Number of records
+        
+        Example:
+            >>> User.count()
+            42
+        """
+        cls._ensure_initialized()
+        db_alias = using or cls._using or 'default'
+        return cls._django_model.objects.using(db_alias).count()
+
+    @classmethod
+    def exists(cls, using: Optional[str] = None, **filters) -> bool:
+        """
+        Check if any records exist matching the given filters.
+        
+        Args:
+            using: Database alias (overrides model's _using)
+            **filters: Filter conditions (same as filter() method)
+        
+        Returns:
+            True if matching records exist
+        
+        Example:
+            >>> User.exists(is_active=True)
+            True
+        """
+        cls._ensure_initialized()
+        db_alias = using or cls._using or 'default'
+        queryset = cls._django_model.objects.using(db_alias)
+        if filters:
+            queryset = queryset.filter(**filters)
+        return queryset.exists()
+
+    @classmethod
+    def truncate(cls, confirm: bool = False, using: Optional[str] = None) -> bool:
+        """
+        Delete all records from the table (faster than delete()).
+        
+        Warning: This permanently deletes all data!
+        
+        Args:
+            confirm: Must be True to actually truncate (safety check)
+            using: Database alias
+        
+        Returns:
+            True if successful
+        
+        Example:
+            >>> User.truncate(confirm=True)
+            True
+        """
+        if not confirm:
+            raise ModelError(
+                "You must pass confirm=True to truncate a table. "
+                "This will permanently delete all data!"
+            )
+        
+        cls._ensure_initialized()
+        db_alias = using or cls._using or 'default'
+        
+        try:
+            from django.db import connections
+            connection = connections[db_alias]
+            table_name = cls._django_model._meta.db_table
+            
+            with connection.cursor() as cursor:
+                if connection.vendor == 'sqlite':
+                    cursor.execute(f"DELETE FROM {table_name}")
+                else:
+                    cursor.execute(f"TRUNCATE TABLE {table_name}")
+            
+            logger.info(f"Truncated table for {cls.__name__}")
+            return True
+        except Exception as e:
+            raise ModelError(f"Failed to truncate table: {e}") from e
+
     def __repr__(self):
         cls_name = self.__class__.__name__
         pk = getattr(self, "pk", None) or getattr(self, "id", None)

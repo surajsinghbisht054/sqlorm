@@ -1287,6 +1287,431 @@ class TestModelInstanceMethods:
             assert "(" in info and ")" in info
 
 
+class TestSerialization:
+    """Test cases for serialization features (to_dict, to_json, etc.)."""
+    
+    @pytest.fixture(autouse=True)
+    def setup_database(self):
+        """Set up a test database for each test."""
+        from sqlorm import configure
+        from sqlorm.base import clear_registry
+        
+        with tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False) as f:
+            self.db_path = f.name
+        
+        configure({
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': self.db_path,
+        })
+        
+        yield
+        
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+    
+    def test_to_dict_basic(self):
+        """Test basic to_dict functionality."""
+        from sqlorm import Model, fields
+        
+        class DictTestModel(Model):
+            name = fields.CharField(max_length=100)
+            value = fields.IntegerField(default=0)
+        
+        DictTestModel.migrate()
+        
+        item = DictTestModel.objects.create(name="Test", value=42)
+        fetched = DictTestModel.objects.get(id=item.id)
+        
+        data = fetched.to_dict()
+        assert isinstance(data, dict)
+        assert data['name'] == "Test"
+        assert data['value'] == 42
+        assert 'id' in data
+    
+    def test_to_dict_with_fields(self):
+        """Test to_dict with field selection."""
+        from sqlorm import Model, fields
+        
+        class FieldSelectModel(Model):
+            name = fields.CharField(max_length=100)
+            email = fields.EmailField()
+            age = fields.IntegerField()
+        
+        FieldSelectModel.migrate()
+        
+        item = FieldSelectModel.objects.create(
+            name="John", email="john@example.com", age=30
+        )
+        fetched = FieldSelectModel.objects.get(id=item.id)
+        
+        data = fetched.to_dict(fields=['name', 'email'])
+        assert 'name' in data
+        assert 'email' in data
+        assert 'age' not in data
+    
+    def test_to_dict_with_exclude(self):
+        """Test to_dict with field exclusion."""
+        from sqlorm import Model, fields
+        
+        class ExcludeModel(Model):
+            name = fields.CharField(max_length=100)
+            secret = fields.CharField(max_length=100)
+        
+        ExcludeModel.migrate()
+        
+        item = ExcludeModel.objects.create(name="Public", secret="Private")
+        fetched = ExcludeModel.objects.get(id=item.id)
+        
+        data = fetched.to_dict(exclude=['secret'])
+        assert 'name' in data
+        assert 'secret' not in data
+    
+    def test_to_dict_without_pk(self):
+        """Test to_dict without primary key."""
+        from sqlorm import Model, fields
+        
+        class NoPkModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        NoPkModel.migrate()
+        
+        item = NoPkModel.objects.create(name="Test")
+        fetched = NoPkModel.objects.get(id=item.id)
+        
+        data = fetched.to_dict(include_pk=False)
+        assert 'id' not in data
+        assert 'name' in data
+    
+    def test_to_json_basic(self):
+        """Test basic to_json functionality."""
+        import json
+        from sqlorm import Model, fields
+        
+        class JsonTestModel(Model):
+            name = fields.CharField(max_length=100)
+            count = fields.IntegerField()
+        
+        JsonTestModel.migrate()
+        
+        item = JsonTestModel.objects.create(name="Test", count=5)
+        fetched = JsonTestModel.objects.get(id=item.id)
+        
+        json_str = fetched.to_json()
+        assert isinstance(json_str, str)
+        
+        parsed = json.loads(json_str)
+        assert parsed['name'] == "Test"
+        assert parsed['count'] == 5
+    
+    def test_to_json_with_indent(self):
+        """Test to_json with indentation."""
+        from sqlorm import Model, fields
+        
+        class IndentModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        IndentModel.migrate()
+        
+        item = IndentModel.objects.create(name="Test")
+        fetched = IndentModel.objects.get(id=item.id)
+        
+        json_str = fetched.to_json(indent=2)
+        assert '\n' in json_str
+        assert '  ' in json_str
+    
+    def test_refresh_method(self):
+        """Test refresh method to reload from database."""
+        from sqlorm import Model, fields
+        
+        class RefreshModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        RefreshModel.migrate()
+        
+        item = RefreshModel.objects.create(name="Original")
+        fetched = RefreshModel.objects.get(id=item.id)
+        
+        # Modify without saving
+        fetched.name = "Modified"
+        assert fetched.name == "Modified"
+        
+        # Refresh from database
+        fetched.refresh()
+        assert fetched.name == "Original"
+    
+    def test_update_method(self):
+        """Test update method for field updates."""
+        from sqlorm import Model, fields
+        
+        class UpdateModel(Model):
+            name = fields.CharField(max_length=100)
+            count = fields.IntegerField(default=0)
+        
+        UpdateModel.migrate()
+        
+        item = UpdateModel.objects.create(name="Test", count=0)
+        fetched = UpdateModel.objects.get(id=item.id)
+        
+        # Update multiple fields
+        fetched.update(name="Updated", count=10)
+        
+        # Verify in database
+        verified = UpdateModel.objects.get(id=item.id)
+        assert verified.name == "Updated"
+        assert verified.count == 10
+    
+    def test_clone_method(self):
+        """Test clone method for copying instances."""
+        from sqlorm import Model, fields
+        
+        class CloneModel(Model):
+            name = fields.CharField(max_length=100)
+            category = fields.CharField(max_length=50)
+        
+        CloneModel.migrate()
+        
+        original = CloneModel.objects.create(name="Original", category="A")
+        fetched = CloneModel.objects.get(id=original.id)
+        
+        # Clone with override
+        clone = fetched.clone(name="Clone of Original")
+        
+        # Clone is not saved yet
+        assert clone.name == "Clone of Original"
+        assert clone.category == "A"
+        
+        # Save and verify
+        clone.save()
+        assert clone.id != original.id
+        assert CloneModel.objects.count() == 2
+
+
+class TestModelClassMethods:
+    """Test cases for Model class methods (count, exists, truncate)."""
+    
+    @pytest.fixture(autouse=True)
+    def setup_database(self):
+        """Set up a test database for each test."""
+        from sqlorm import configure
+        from sqlorm.base import clear_registry
+        
+        with tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False) as f:
+            self.db_path = f.name
+        
+        configure({
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': self.db_path,
+        })
+        
+        yield
+        
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+    
+    def test_count_method(self):
+        """Test Model.count() class method."""
+        from sqlorm import Model, fields
+        
+        class CountModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        CountModel.migrate()
+        
+        assert CountModel.count() == 0
+        
+        CountModel.objects.create(name="One")
+        CountModel.objects.create(name="Two")
+        CountModel.objects.create(name="Three")
+        
+        assert CountModel.count() == 3
+    
+    def test_exists_method_basic(self):
+        """Test Model.exists() class method without filters."""
+        from sqlorm import Model, fields
+        
+        class ExistsModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        ExistsModel.migrate()
+        
+        assert ExistsModel.exists() is False
+        
+        ExistsModel.objects.create(name="Test")
+        
+        assert ExistsModel.exists() is True
+    
+    def test_exists_method_with_filters(self):
+        """Test Model.exists() class method with filters."""
+        from sqlorm import Model, fields
+        
+        class FilterExistsModel(Model):
+            name = fields.CharField(max_length=100)
+            active = fields.BooleanField(default=True)
+        
+        FilterExistsModel.migrate()
+        
+        FilterExistsModel.objects.create(name="Active", active=True)
+        FilterExistsModel.objects.create(name="Inactive", active=False)
+        
+        assert FilterExistsModel.exists(active=True) is True
+        assert FilterExistsModel.exists(active=False) is True
+        assert FilterExistsModel.exists(name="Nonexistent") is False
+    
+    def test_truncate_method(self):
+        """Test Model.truncate() class method."""
+        from sqlorm import Model, fields
+        from sqlorm.exceptions import ModelError
+        
+        class TruncateModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        TruncateModel.migrate()
+        
+        TruncateModel.objects.create(name="One")
+        TruncateModel.objects.create(name="Two")
+        TruncateModel.objects.create(name="Three")
+        
+        assert TruncateModel.count() == 3
+        
+        # Test safety check
+        with pytest.raises(ModelError):
+            TruncateModel.truncate()
+        
+        # Truncate with confirmation
+        TruncateModel.truncate(confirm=True)
+        
+        assert TruncateModel.count() == 0
+    
+    def test_get_field_info(self):
+        """Test Model.get_field_info() class method."""
+        from sqlorm import Model, fields
+        
+        class FieldInfoModel(Model):
+            name = fields.CharField(max_length=100)
+            email = fields.EmailField(unique=True)
+            age = fields.IntegerField(null=True)
+        
+        FieldInfoModel.migrate()
+        
+        info = FieldInfoModel.get_field_info()
+        
+        assert 'name' in info
+        assert info['name']['type'] == 'CharField'
+        assert info['name']['max_length'] == 100
+        
+        assert 'email' in info
+        assert info['email']['unique'] is True
+        
+        assert 'age' in info
+        assert info['age']['null'] is True
+
+
+class TestEnhancedExceptions:
+    """Test cases for enhanced exception features."""
+    
+    def test_exception_details(self):
+        """Test that exceptions support details dict."""
+        from sqlorm.exceptions import SQLORMError, ConfigurationError
+        
+        error = SQLORMError("Test error", details={"key": "value"})
+        assert error.details == {"key": "value"}
+        
+        config_error = ConfigurationError(
+            "Missing config",
+            missing_keys=["ENGINE", "NAME"]
+        )
+        assert config_error.details["missing_keys"] == ["ENGINE", "NAME"]
+    
+    def test_exception_hint(self):
+        """Test that exceptions support hints."""
+        from sqlorm.exceptions import SQLORMError
+        
+        error = SQLORMError(
+            "Connection failed",
+            hint="Check your database credentials"
+        )
+        assert error.hint == "Check your database credentials"
+        assert "Hint:" in str(error)
+    
+    def test_exception_to_dict(self):
+        """Test that exceptions can be serialized to dict."""
+        from sqlorm.exceptions import MigrationError
+        
+        error = MigrationError(
+            "Table creation failed",
+            table_name="users",
+            operation="CREATE TABLE"
+        )
+        
+        error_dict = error.to_dict()
+        assert error_dict["error_type"] == "MigrationError"
+        assert error_dict["message"] == "Table creation failed"
+        assert error_dict["details"]["table"] == "users"
+
+
+class TestEquality:
+    """Test cases for equality and hashing of model instances."""
+    
+    @pytest.fixture(autouse=True)
+    def setup_database(self):
+        """Set up a test database for each test."""
+        from sqlorm import configure
+        
+        with tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False) as f:
+            self.db_path = f.name
+        
+        configure({
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': self.db_path,
+        })
+        
+        yield
+        
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+    
+    def test_instance_equality(self):
+        """Test that instances with same pk are equal."""
+        from sqlorm import Model, fields
+        
+        class EqualityModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        EqualityModel.migrate()
+        
+        item = EqualityModel.objects.create(name="Test")
+        
+        fetched1 = EqualityModel.objects.get(id=item.id)
+        fetched2 = EqualityModel.objects.get(id=item.id)
+        
+        assert fetched1 == fetched2
+    
+    def test_instance_hashing(self):
+        """Test that instances can be used in sets and as dict keys."""
+        from sqlorm import Model, fields
+        
+        class HashModel(Model):
+            name = fields.CharField(max_length=100)
+        
+        HashModel.migrate()
+        
+        item1 = HashModel.objects.create(name="One")
+        item2 = HashModel.objects.create(name="Two")
+        
+        # Test in set
+        items_set = {item1, item2}
+        assert len(items_set) == 2
+        
+        # Fetch again and add to set
+        fetched1 = HashModel.objects.get(id=item1.id)
+        items_set.add(fetched1)
+        assert len(items_set) == 2  # Should not add duplicate
+        
+        # Test as dict key
+        items_dict = {item1: "first", item2: "second"}
+        assert items_dict[fetched1] == "first"
+
+
 # Multi-database tests are in a separate file: test_multi_database.py
 # This is necessary because Django doesn't support full reconfiguration
 # after django.setup() has been called. The separate file ensures a

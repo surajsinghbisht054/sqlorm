@@ -12,6 +12,8 @@ Key Features:
 - Easy configuration with minimal boilerplate
 - Full access to Django's model fields, querysets, and migrations
 - Compatible with existing Django knowledge
+- Serialization support (to_dict, to_json)
+- Type hints for better IDE support
 
 Quick Start:
     >>> from sqlorm import configure, Model, fields
@@ -34,13 +36,21 @@ Quick Start:
     >>> # Use Django ORM as usual
     >>> user = User.objects.create(name="John", email="john@example.com")
     >>> users = User.objects.filter(age__gte=18)
+    >>> 
+    >>> # Serialize to dict/JSON
+    >>> user.to_dict()
+    {'id': 1, 'name': 'John', 'email': 'john@example.com'}
+    >>> user.to_json()
+    '{"id": 1, "name": "John", "email": "john@example.com"}'
 
 Author: S.S.B (surajsinghbisht054@gmail.com)
 License: MIT
 Repository: https://github.com/surajsinghbisht054/sqlorm
 """
 
-__version__ = "2.0.0"
+from typing import TYPE_CHECKING
+
+__version__ = "2.1.0"
 __author__ = "S.S.B"
 __email__ = "surajsinghbisht054@gmail.com"
 __license__ = "MIT"
@@ -55,12 +65,14 @@ from .config import (
     get_database_aliases,
     get_database_config,
     get_settings,
+    is_configured,
 )
 from .base import (
     Model,
     get_registered_models,
     create_all_tables,
     migrate_all,
+    clear_registry,
     # Migration utilities
     get_table_columns,
     column_exists,
@@ -75,19 +87,37 @@ from .base import (
     sync_schema,
 )
 from .fields import fields
-from .connection import get_connection, close_connection, execute_raw_sql, transaction
+from .connection import (
+    get_connection,
+    close_connection,
+    close_all_connections,
+    execute_raw_sql,
+    execute_raw_sql_dict,
+    transaction,
+    get_database_info,
+    get_table_names,
+    get_table_description,
+)
 from .exceptions import (
     SQLORMError,
     ConfigurationError,
     ModelError,
     MigrationError,
     ConnectionError,
+    ValidationError,
+    QueryError,
 )
 
 # Convenience re-exports from Django
 try:
     from django.db.models import Q, F, Count, Sum, Avg, Max, Min, Prefetch
     from django.db.models import Value, Case, When, OuterRef, Subquery
+    from django.db.models import Exists, ExpressionWrapper
+    from django.db.models.functions import (
+        Coalesce, Concat, Length, Lower, Upper, Trim,
+        Now, TruncDate, TruncMonth, TruncYear,
+        Cast, Greatest, Least,
+    )
 except ImportError:
     pass  # Django not installed yet
 
@@ -106,17 +136,25 @@ __all__ = [
     "get_database_aliases",
     "get_database_config",
     "get_settings",
+    "is_configured",
     # Models
     "Model",
     "get_registered_models",
     "create_all_tables",
     "migrate_all",
+    "clear_registry",
     # Fields
     "fields",
     # Connection
     "get_connection",
     "close_connection",
+    "close_all_connections",
     "execute_raw_sql",
+    "execute_raw_sql_dict",
+    "transaction",
+    "get_database_info",
+    "get_table_names",
+    "get_table_description",
     # Migration utilities
     "get_table_columns",
     "column_exists",
@@ -135,19 +173,37 @@ __all__ = [
     "ModelError",
     "MigrationError",
     "ConnectionError",
-    # Django re-exports
+    "ValidationError",
+    "QueryError",
+    # Django re-exports - Query building
     "Q",
     "F",
+    "Value",
+    "Case",
+    "When",
+    "OuterRef",
+    "Subquery",
+    "Exists",
+    "ExpressionWrapper",
+    # Django re-exports - Aggregations
     "Count",
     "Sum",
     "Avg",
     "Max",
     "Min",
     "Prefetch",
-    "Value",
-    "Case",
-    "When",
-    "OuterRef",
-    "Subquery",
-    "transaction",
+    # Django re-exports - Functions
+    "Coalesce",
+    "Concat",
+    "Length",
+    "Lower",
+    "Upper",
+    "Trim",
+    "Now",
+    "TruncDate",
+    "TruncMonth",
+    "TruncYear",
+    "Cast",
+    "Greatest",
+    "Least",
 ]

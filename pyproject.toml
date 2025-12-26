@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sqlorm"
-version = "2.0.0"
+version = "2.1.0"
 authors = [
     { name = "S.S.B", email = "surajsinghbisht054@gmail.com" }
 ]
@@ -23,10 +23,17 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Database",
     "Topic :: Database :: Front-Ends",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Framework :: Django",
+    "Framework :: Django :: 3.2",
+    "Framework :: Django :: 4.0",
+    "Framework :: Django :: 4.1",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Typing :: Typed",
 ]
 keywords = [
     "django",
@@ -39,6 +46,8 @@ keywords = [
     "standalone",
     "script",
     "models",
+    "serialization",
+    "type-hints",
 ]
 dependencies = [
     "Django>=3.2",
@@ -52,6 +61,8 @@ dev = [
     "isort>=5.0",
     "flake8>=6.0",
     "mypy>=1.0",
+    "django-stubs>=4.0",
+    "pre-commit>=3.0",
 ]
 postgresql = [
     "psycopg2-binary>=2.9",
@@ -62,15 +73,24 @@ mysql = [
 yaml = [
     "pyyaml>=6.0",
 ]
+all = [
+    "psycopg2-binary>=2.9",
+    "mysqlclient>=2.1",
+    "pyyaml>=6.0",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/surajsinghbisht054/sqlorm"
 "Bug Tracker" = "https://github.com/surajsinghbisht054/sqlorm/issues"
 "Documentation" = "https://github.com/surajsinghbisht054/sqlorm#readme"
 "Source Code" = "https://github.com/surajsinghbisht054/sqlorm"
+"Changelog" = "https://github.com/surajsinghbisht054/sqlorm/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*", "examples*"]
+
+[tool.setuptools.package-data]
+sqlorm = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -82,7 +102,7 @@ addopts = "-v --tb=short --ignore=tests/test_multi_database.py"
 
 [tool.black]
 line-length = 88
-target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312', 'py313']
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -110,3 +130,19 @@ python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+plugins = ["mypy_django_plugin.main"]
+
+[tool.django-stubs]
+django_settings_module = "sqlorm.config"
+
+[tool.coverage.run]
+source = ["sqlorm"]
+omit = ["tests/*", "examples/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

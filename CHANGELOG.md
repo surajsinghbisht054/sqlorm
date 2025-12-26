@@ -5,6 +5,42 @@ All notable changes to SQLORM will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2024-12-26
+
+### 🚀 New Features
+
+#### Serialization Support
+- **`to_dict()`**: Convert model instances to dictionaries with flexible field selection
+- **`to_json()`**: Serialize model instances to JSON strings
+- **`clone()`**: Create copies of model instances with optional overrides
+- **`refresh()`**: Reload instance from database
+- **`update()`**: Update multiple fields and save in one operation
+
+#### Model Improvements
+- **`get_field_info()`**: Get detailed information about all model fields
+- **`count()`**: Class method to get record count
+- **`exists()`**: Class method to check if records exist with optional filters
+- **`truncate()`**: Fast deletion of all records in a table
+
+#### Enhanced Exceptions
+- All exceptions now support `details` dict and `hint` property
+- New `to_dict()` method on exceptions for logging/serialization
+- New `QueryError` exception type for query-related errors
+- New `ValidationError` exception type for data validation
+
+#### Developer Experience
+- Added `py.typed` marker for PEP 561 compliance
+- Python 3.13 support
+- GitHub Actions CI/CD workflow
+- Pre-commit configuration for code quality
+- Improved type hints throughout codebase
+- Additional Django function re-exports (Coalesce, Concat, Now, etc.)
+
+### Changed
+- Version bumped to 2.1.0
+- Enhanced `__init__.py` with more exports
+- Improved docstrings throughout
+
 ## [2.0.0] - 2024-12-24
 
 ### 🚀 Complete Rewrite
