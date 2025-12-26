@@ -56,7 +56,24 @@ from .config import (
     get_database_config,
     get_settings,
 )
-from .base import Model, get_registered_models, create_all_tables, migrate_all
+from .base import (
+    Model,
+    get_registered_models,
+    create_all_tables,
+    migrate_all,
+    # Migration utilities
+    get_table_columns,
+    column_exists,
+    add_column,
+    safe_add_column,
+    rename_column,
+    change_column_type,
+    recreate_table,
+    backup_table,
+    restore_table,
+    get_schema_diff,
+    sync_schema,
+)
 from .fields import fields
 from .connection import get_connection, close_connection, execute_raw_sql, transaction
 from .exceptions import (
@@ -100,6 +117,18 @@ __all__ = [
     "get_connection",
     "close_connection",
     "execute_raw_sql",
+    # Migration utilities
+    "get_table_columns",
+    "column_exists",
+    "add_column",
+    "safe_add_column",
+    "rename_column",
+    "change_column_type",
+    "recreate_table",
+    "backup_table",
+    "restore_table",
+    "get_schema_diff",
+    "sync_schema",
     # Exceptions
     "SQLORMError",
     "ConfigurationError",

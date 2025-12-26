@@ -674,9 +674,22 @@ with django_transaction.atomic():
 
 ## Migration System
 
+### Overview
+
+SQLORM provides a comprehensive migration system that handles:
+- ✅ Initial table creation
+- ✅ Adding new columns to existing tables
+- ✅ Renaming columns
+- ✅ Changing column types
+- ✅ Schema introspection and diff detection
+- ✅ Table backup and restoration
+- ✅ Data-preserving table recreation
+
+Unlike Django's full migration system (which tracks migration history in files), SQLORM uses a simpler approach designed for standalone scripts and rapid development.
+
 ### How Migrations Work
 
-SQLORM provides a simplified migration system that handles table creation:
+#### Initial Table Creation
 
 ```python
 class Product(Model):
@@ -692,25 +705,334 @@ Product.migrate()
 1. SQLORM uses Django's `schema_editor` to generate DDL
 2. For SQLite: Creates table with all columns
 3. For PostgreSQL/MySQL: Creates table with proper column types
+4. If table already exists, the operation is safely skipped
+
+#### Checking Table Status
+
+```python
+# Check if table exists
+if not Product.table_exists():
+    Product.migrate()
+
+# Get table name
+table_name = Product.get_table_name()
+
+# Get all field names
+fields = Product.get_fields()
+```
+
+### Schema Changes: Adding Columns
+
+When you add new fields to an existing model, use the migration utilities:
+
+```python
+from sqlorm import safe_add_column, add_column
+
+# Safe add (won't fail if column exists)
+safe_add_column(
+    table_name='product',
+    column_name='discount',
+    column_type='DECIMAL(5,2)',
+    default='0.00'
+)
+
+# Add nullable column
+add_column(
+    table_name='user',
+    column_name='phone',
+    column_type='VARCHAR(20)',
+    nullable=True
+)
+
+# Add column with NOT NULL and default
+add_column(
+    table_name='order',
+    column_name='status',
+    column_type='VARCHAR(20)',
+    default="'pending'",
+    nullable=False
+)
+```
+
+### Schema Changes: Renaming Columns
+
+```python
+from sqlorm import rename_column
+
+# Rename a column
+rename_column(
+    table_name='user',
+    old_column_name='username',
+    new_column_name='user_name'
+)
+```
+
+**Note:** For SQLite versions before 3.25.0, SQLORM automatically handles renaming via table recreation to preserve data.
+
+### Schema Changes: Changing Column Types
+
+```python
+from sqlorm import change_column_type
+
+# Change column type
+change_column_type(
+    table_name='product',
+    column_name='price',
+    new_type='DECIMAL(12,4)'  # More precision
+)
+
+# Convert varchar to integer
+change_column_type(
+    table_name='settings',
+    column_name='value',
+    new_type='INTEGER'
+)
+```
+
+**Warning:** Type changes may cause data loss if the conversion is incompatible. Always backup important data first.
+
+### Schema Introspection
+
+SQLORM provides utilities to inspect and compare schemas:
+
+```python
+from sqlorm import get_table_columns, column_exists, get_schema_diff
+
+# Get all columns in a table
+columns = get_table_columns('product')
+# ['id', 'name', 'price', 'created_at']
+
+# Check if column exists
+if not column_exists('product', 'discount'):
+    add_column('product', 'discount', 'DECIMAL(5,2)')
+
+# Compare model with database
+class Product(Model):
+    name = fields.CharField(max_length=200)
+    price = fields.DecimalField(max_digits=10, decimal_places=2)
+    discount = fields.DecimalField(max_digits=5, decimal_places=2)  # New!
+
+diff = get_schema_diff(Product)
+# {
+#     'missing_in_db': ['discount'],
+#     'extra_in_db': [],
+#     'model_columns': ['id', 'name', 'price', 'discount'],
+#     'db_columns': ['id', 'name', 'price']
+# }
+```
+
+### Automatic Schema Sync
+
+```python
+from sqlorm import sync_schema
+
+# Automatically add missing columns
+result = sync_schema(Product)
+print(f"Added columns: {result['added']}")
+print(f"Skipped columns: {result['skipped']}")
+```
+
+### Table Recreation (Complex Changes)
+
+For changes that can't be done with ALTER TABLE (especially in SQLite):
+
+```python
+from sqlorm import recreate_table
+
+new_schema = """
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name VARCHAR(200),
+    email VARCHAR(254) UNIQUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+# Recreate table preserving specific columns
+recreate_table(
+    table_name='users',
+    new_schema=new_schema,
+    columns_to_copy=['id', 'email']  # Copy only these columns
+)
+```
+
+### Backup and Restore
+
+Always backup before risky operations:
+
+```python
+from sqlorm import backup_table, restore_table
+
+# Create backup
+backup_table('users')  # Creates 'users_backup'
+
+# ... make changes ...
+
+# If something goes wrong, restore
+restore_table('users')  # Restores from 'users_backup'
+```
+
+### Migration Workflow: Best Practices
+
+#### 1. Development Workflow
+
+```python
+from sqlorm import configure, Model, fields, sync_schema
+
+configure({...})
+
+class User(Model):
+    name = fields.CharField(max_length=100)
+    email = fields.EmailField(unique=True)
+
+# Initial migration
+User.migrate()
+
+# Later, add new field to model
+class User(Model):
+    name = fields.CharField(max_length=100)
+    email = fields.EmailField(unique=True)
+    verified = fields.BooleanField(default=False)  # NEW!
+
+# Sync to add the new column
+sync_schema(User)
+```
+
+#### 2. Production Workflow
+
+```python
+from sqlorm import (
+    backup_table,
+    safe_add_column,
+    column_exists,
+    execute_raw_sql
+)
+
+# Step 1: Backup
+backup_table('users')
+
+# Step 2: Add columns safely
+safe_add_column('users', 'verified', 'BOOLEAN', default='0')
+safe_add_column('users', 'verification_token', 'VARCHAR(64)', nullable=True)
+
+# Step 3: Migrate existing data
+execute_raw_sql(
+    "UPDATE users SET verified = 1 WHERE email_confirmed = 1",
+    fetch=False
+)
+
+# Step 4: Verify migration
+result = execute_raw_sql("SELECT COUNT(*) FROM users WHERE verified = 1")
+print(f"Migrated {result[0][0]} verified users")
+```
+
+#### 3. Handling Complex Changes
+
+For changes like removing columns or changing NOT NULL constraints:
+
+```python
+from sqlorm import recreate_table, backup_table
+
+# Step 1: Backup
+backup_table('products')
+
+# Step 2: Define new schema
+new_schema = """
+CREATE TABLE products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(200) NOT NULL,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0,
+    category_id INTEGER,
+    -- removed: old_field
+    -- added: category_id
+    FOREIGN KEY (category_id) REFERENCES categories(id)
+)
+"""
+
+# Step 3: Recreate with data
+recreate_table(
+    table_name='products',
+    new_schema=new_schema,
+    columns_to_copy=['id', 'name', 'price']
+)
+```
+
+### Migration Utilities Reference
+
+| Function | Purpose |
+|----------|---------|
+| `migrate()` | Create table for a model |
+| `table_exists()` | Check if table exists |
+| `get_table_columns()` | List all columns in a table |
+| `column_exists()` | Check if specific column exists |
+| `add_column()` | Add new column to table |
+| `safe_add_column()` | Add column only if it doesn't exist |
+| `rename_column()` | Rename a column |
+| `change_column_type()` | Change column's data type |
+| `recreate_table()` | Recreate table with new schema |
+| `backup_table()` | Create backup copy of table |
+| `restore_table()` | Restore table from backup |
+| `get_schema_diff()` | Compare model with database |
+| `sync_schema()` | Add missing columns to database |
 
 ### Limitations
 
 The simplified migration system:
 
-- ✅ Creates new tables
-- ✅ Adds new columns (in most cases)
-- ⚠️ Does not track migration history
-- ⚠️ Cannot rename columns
-- ⚠️ Cannot remove columns safely
+- ⚠️ Does not track migration history (no migration files)
+- ⚠️ Cannot automatically detect and apply column removals
+- ⚠️ Renaming tables requires manual recreation
+- ⚠️ Complex constraint changes may require raw SQL
 
-**For Complex Migrations**, consider:
+**For Very Complex Migrations**, consider using raw SQL:
 
 ```python
 from sqlorm import execute_raw_sql
 
 # Manual schema changes
-execute_raw_sql("ALTER TABLE product ADD COLUMN discount DECIMAL(5,2)")
-execute_raw_sql("ALTER TABLE product RENAME COLUMN old_name TO new_name")
+execute_raw_sql("ALTER TABLE product ADD COLUMN discount DECIMAL(5,2)", fetch=False)
+execute_raw_sql("CREATE INDEX idx_product_name ON product(name)", fetch=False)
+execute_raw_sql("ALTER TABLE product DROP COLUMN old_field", fetch=False)  # PostgreSQL
+```
+
+### Database-Specific Considerations
+
+#### SQLite
+
+- Limited ALTER TABLE support (no DROP COLUMN before 3.35, no MODIFY)
+- Use `recreate_table()` for complex changes
+- Column renames available in SQLite 3.25+
+
+```python
+# For old SQLite, SQLORM handles this automatically
+rename_column('users', 'old_name', 'new_name')  # Works on all SQLite versions
+```
+
+#### PostgreSQL
+
+- Full ALTER TABLE support
+- Transactional DDL (schema changes can be rolled back)
+
+```python
+from sqlorm import transaction
+
+with transaction():
+    add_column('users', 'role', 'VARCHAR(50)')
+    execute_raw_sql("UPDATE users SET role = 'member'", fetch=False)
+    # Commits on success, rolls back on error
+```
+
+#### MySQL
+
+- Most ALTER TABLE operations work
+- Some changes may lock the table temporarily
+
+```python
+# MySQL-specific syntax for modifications
+execute_raw_sql(
+    "ALTER TABLE users MODIFY phone VARCHAR(30)",
+    fetch=False
+)
 ```
 
 ---

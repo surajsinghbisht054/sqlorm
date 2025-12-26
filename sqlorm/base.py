@@ -518,3 +518,613 @@ def clear_registry():
     global _model_registry
     _model_registry = {}
     logger.warning("Model registry cleared")
+
+# =============================================================================
+# Schema Migration Utilities
+# =============================================================================
+
+def get_table_columns(table_name: str, using: str = 'default') -> List[str]:
+    """
+    Get the list of column names for a table.
+    
+    Args:
+        table_name: Name of the database table
+        using: Database alias
+    
+    Returns:
+        List of column name strings
+    
+    Example:
+        >>> columns = get_table_columns('user')
+        >>> print(columns)
+        ['id', 'name', 'email', 'created_at']
+    """
+    try:
+        from django.db import connections
+        
+        connection = connections[using]
+        cursor = connection.cursor()
+        
+        # Get table info (works for SQLite, PostgreSQL, MySQL)
+        if connection.vendor == 'sqlite':
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            return [row[1] for row in cursor.fetchall()]
+        elif connection.vendor == 'postgresql':
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = %s
+                ORDER BY ordinal_position
+            """, [table_name])
+            return [row[0] for row in cursor.fetchall()]
+        elif connection.vendor == 'mysql':
+            cursor.execute(f"DESCRIBE {table_name}")
+            return [row[0] for row in cursor.fetchall()]
+        else:
+            # Generic fallback
+            cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
+            return [desc[0] for desc in cursor.description] if cursor.description else []
+    except Exception as e:
+        logger.error(f"Failed to get columns for {table_name}: {e}")
+        return []
+
+
+def column_exists(table_name: str, column_name: str, using: str = 'default') -> bool:
+    """
+    Check if a column exists in a table.
+    
+    Args:
+        table_name: Name of the database table
+        column_name: Name of the column to check
+        using: Database alias
+    
+    Returns:
+        True if column exists, False otherwise
+    
+    Example:
+        >>> if not column_exists('user', 'phone'):
+        ...     add_column('user', 'phone', 'VARCHAR(20)')
+    """
+    columns = get_table_columns(table_name, using)
+    return column_name.lower() in [c.lower() for c in columns]
+
+
+def add_column(
+    table_name: str,
+    column_name: str,
+    column_type: str,
+    default: Optional[str] = None,
+    nullable: bool = True,
+    using: str = 'default'
+) -> bool:
+    """
+    Add a new column to an existing table.
+    
+    Args:
+        table_name: Name of the database table
+        column_name: Name of the new column
+        column_type: SQL type of the column (e.g., 'VARCHAR(100)', 'INTEGER')
+        default: Default value SQL expression (e.g., "'pending'", "0")
+        nullable: Whether the column can be NULL
+        using: Database alias
+    
+    Returns:
+        True if successful
+    
+    Raises:
+        MigrationError: If the column cannot be added
+    
+    Example:
+        >>> add_column('user', 'phone', 'VARCHAR(20)', nullable=True)
+        >>> add_column('product', 'discount', 'DECIMAL(5,2)', default='0.00')
+    """
+    try:
+        from django.db import connections
+        
+        connection = connections[using]
+        cursor = connection.cursor()
+        
+        # Build ALTER TABLE statement
+        null_clause = "" if nullable else " NOT NULL"
+        default_clause = f" DEFAULT {default}" if default else ""
+        
+        sql = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}{null_clause}{default_clause}"
+        
+        cursor.execute(sql)
+        logger.info(f"Added column '{column_name}' to table '{table_name}'")
+        return True
+        
+    except Exception as e:
+        raise MigrationError(f"Failed to add column '{column_name}' to '{table_name}': {e}") from e
+
+
+def safe_add_column(
+    table_name: str,
+    column_name: str,
+    column_type: str,
+    default: Optional[str] = None,
+    nullable: bool = True,
+    using: str = 'default'
+) -> bool:
+    """
+    Add a column only if it doesn't already exist.
+    
+    This is a safe wrapper around add_column() that checks for column
+    existence first, preventing errors when running migrations multiple times.
+    
+    Args:
+        table_name: Name of the database table
+        column_name: Name of the new column
+        column_type: SQL type of the column
+        default: Default value SQL expression
+        nullable: Whether the column can be NULL
+        using: Database alias
+    
+    Returns:
+        True if column was added, False if it already existed
+    
+    Example:
+        >>> # Safe to call multiple times
+        >>> safe_add_column('user', 'verified', 'BOOLEAN', default='0')
+        True
+        >>> safe_add_column('user', 'verified', 'BOOLEAN', default='0')
+        False  # Already exists, not added again
+    """
+    if column_exists(table_name, column_name, using):
+        logger.debug(f"Column '{column_name}' already exists in '{table_name}', skipping")
+        return False
+    
+    add_column(table_name, column_name, column_type, default, nullable, using)
+    return True
+
+
+def rename_column(
+    table_name: str,
+    old_column_name: str,
+    new_column_name: str,
+    using: str = 'default'
+) -> bool:
+    """
+    Rename a column in a table.
+    
+    Note: SQLite versions before 3.25.0 do not support ALTER TABLE RENAME COLUMN.
+    For older SQLite versions, this function uses table recreation.
+    
+    Args:
+        table_name: Name of the database table
+        old_column_name: Current name of the column
+        new_column_name: New name for the column
+        using: Database alias
+    
+    Returns:
+        True if successful
+    
+    Example:
+        >>> rename_column('user', 'username', 'user_name')
+    """
+    try:
+        from django.db import connections
+        import sqlite3
+        
+        connection = connections[using]
+        cursor = connection.cursor()
+        
+        if connection.vendor == 'sqlite':
+            # Check SQLite version
+            sqlite_version = tuple(int(x) for x in sqlite3.sqlite_version.split('.'))
+            
+            if sqlite_version >= (3, 25, 0):
+                # Modern SQLite supports RENAME COLUMN
+                sql = f"ALTER TABLE {table_name} RENAME COLUMN {old_column_name} TO {new_column_name}"
+                cursor.execute(sql)
+            else:
+                # Older SQLite requires table recreation
+                logger.warning(f"SQLite {sqlite3.sqlite_version} doesn't support RENAME COLUMN, using table recreation")
+                _rename_column_via_recreation(table_name, old_column_name, new_column_name, using)
+        else:
+            # PostgreSQL, MySQL support standard syntax
+            if connection.vendor == 'postgresql':
+                sql = f"ALTER TABLE {table_name} RENAME COLUMN {old_column_name} TO {new_column_name}"
+            elif connection.vendor == 'mysql':
+                # MySQL requires knowing the column type
+                cursor.execute(f"DESCRIBE {table_name}")
+                column_info = {row[0]: row[1] for row in cursor.fetchall()}
+                col_type = column_info.get(old_column_name, 'VARCHAR(255)')
+                sql = f"ALTER TABLE {table_name} CHANGE {old_column_name} {new_column_name} {col_type}"
+            else:
+                sql = f"ALTER TABLE {table_name} RENAME COLUMN {old_column_name} TO {new_column_name}"
+            
+            cursor.execute(sql)
+        
+        logger.info(f"Renamed column '{old_column_name}' to '{new_column_name}' in '{table_name}'")
+        return True
+        
+    except Exception as e:
+        raise MigrationError(f"Failed to rename column: {e}") from e
+
+
+def _rename_column_via_recreation(
+    table_name: str,
+    old_column_name: str,
+    new_column_name: str,
+    using: str = 'default'
+):
+    """Helper to rename column by recreating table (for old SQLite)."""
+    from django.db import connections
+    
+    connection = connections[using]
+    cursor = connection.cursor()
+    
+    # Get current schema
+    cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+    create_sql = cursor.fetchone()[0]
+    
+    # Modify the CREATE statement
+    new_create_sql = create_sql.replace(old_column_name, new_column_name)
+    
+    # Get all column names
+    columns = get_table_columns(table_name, using)
+    old_columns = ', '.join(columns)
+    new_columns = ', '.join(new_column_name if c == old_column_name else c for c in columns)
+    
+    # Rename old table, create new, copy data, drop old
+    cursor.execute(f"ALTER TABLE {table_name} RENAME TO {table_name}_old")
+    cursor.execute(new_create_sql)
+    cursor.execute(f"INSERT INTO {table_name} ({new_columns}) SELECT {old_columns} FROM {table_name}_old")
+    cursor.execute(f"DROP TABLE {table_name}_old")
+
+
+def change_column_type(
+    table_name: str,
+    column_name: str,
+    new_type: str,
+    using: str = 'default'
+) -> bool:
+    """
+    Change the data type of a column.
+    
+    Warning: This may cause data loss if the conversion is not compatible.
+    SQLite requires table recreation for type changes.
+    
+    Args:
+        table_name: Name of the database table
+        column_name: Name of the column to modify
+        new_type: New SQL type for the column
+        using: Database alias
+    
+    Returns:
+        True if successful
+    
+    Example:
+        >>> change_column_type('product', 'price', 'DECIMAL(12,4)')
+    """
+    try:
+        from django.db import connections
+        
+        connection = connections[using]
+        cursor = connection.cursor()
+        
+        if connection.vendor == 'sqlite':
+            # SQLite requires table recreation for type changes
+            _change_column_type_sqlite(table_name, column_name, new_type, cursor)
+        elif connection.vendor == 'postgresql':
+            sql = f"ALTER TABLE {table_name} ALTER COLUMN {column_name} TYPE {new_type}"
+            cursor.execute(sql)
+        elif connection.vendor == 'mysql':
+            sql = f"ALTER TABLE {table_name} MODIFY {column_name} {new_type}"
+            cursor.execute(sql)
+        else:
+            raise MigrationError(f"Unsupported database vendor: {connection.vendor}")
+        
+        logger.info(f"Changed column '{column_name}' type to '{new_type}' in '{table_name}'")
+        return True
+        
+    except Exception as e:
+        raise MigrationError(f"Failed to change column type: {e}") from e
+
+
+def _change_column_type_sqlite(table_name: str, column_name: str, new_type: str, cursor):
+    """Helper to change column type in SQLite via table recreation."""
+    # Get current table schema
+    cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+    result = cursor.fetchone()
+    if not result:
+        raise MigrationError(f"Table '{table_name}' not found")
+    
+    create_sql = result[0]
+    
+    # Parse and modify the schema (simple regex replacement)
+    import re
+    # Match column definition like: column_name TYPE
+    pattern = rf'\b{column_name}\s+\w+(?:\([^)]+\))?'
+    new_def = f"{column_name} {new_type}"
+    modified_sql = re.sub(pattern, new_def, create_sql, count=1, flags=re.IGNORECASE)
+    
+    # Get columns
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+    columns_str = ', '.join(columns)
+    
+    # Recreate table
+    cursor.execute(f"ALTER TABLE {table_name} RENAME TO {table_name}_old")
+    cursor.execute(modified_sql)
+    cursor.execute(f"INSERT INTO {table_name} ({columns_str}) SELECT {columns_str} FROM {table_name}_old")
+    cursor.execute(f"DROP TABLE {table_name}_old")
+
+
+def recreate_table(
+    table_name: str,
+    new_schema: str,
+    columns_to_copy: List[str],
+    using: str = 'default'
+) -> bool:
+    """
+    Recreate a table with a new schema while preserving specified data.
+    
+    This is useful for complex schema changes that cannot be done with
+    ALTER TABLE (especially in SQLite).
+    
+    Args:
+        table_name: Name of the table to recreate
+        new_schema: Full CREATE TABLE SQL statement for the new schema
+        columns_to_copy: List of column names to copy from old to new table
+        using: Database alias
+    
+    Returns:
+        True if successful
+    
+    Example:
+        >>> new_schema = '''
+        ...     CREATE TABLE users (
+        ...         id INTEGER PRIMARY KEY,
+        ...         full_name VARCHAR(200),
+        ...         email VARCHAR(254)
+        ...     )
+        ... '''
+        >>> recreate_table('users', new_schema, ['id', 'email'])
+    """
+    try:
+        from django.db import connections
+        
+        connection = connections[using]
+        cursor = connection.cursor()
+        
+        columns_str = ', '.join(columns_to_copy)
+        
+        # Rename old table
+        cursor.execute(f"ALTER TABLE {table_name} RENAME TO {table_name}_old")
+        
+        # Create new table
+        cursor.execute(new_schema)
+        
+        # Copy data
+        cursor.execute(f"INSERT INTO {table_name} ({columns_str}) SELECT {columns_str} FROM {table_name}_old")
+        
+        # Drop old table
+        cursor.execute(f"DROP TABLE {table_name}_old")
+        
+        logger.info(f"Recreated table '{table_name}' with new schema")
+        return True
+        
+    except Exception as e:
+        raise MigrationError(f"Failed to recreate table: {e}") from e
+
+
+def backup_table(table_name: str, suffix: str = '_backup', using: str = 'default') -> str:
+    """
+    Create a backup copy of a table.
+    
+    Args:
+        table_name: Name of the table to backup
+        suffix: Suffix for the backup table name
+        using: Database alias
+    
+    Returns:
+        Name of the backup table
+    
+    Example:
+        >>> backup_name = backup_table('users')
+        >>> print(backup_name)
+        'users_backup'
+    """
+    try:
+        from django.db import connections
+        
+        connection = connections[using]
+        cursor = connection.cursor()
+        
+        backup_name = f"{table_name}{suffix}"
+        
+        # Create backup table with same structure and data
+        if connection.vendor == 'sqlite':
+            cursor.execute(f"CREATE TABLE {backup_name} AS SELECT * FROM {table_name}")
+        elif connection.vendor == 'postgresql':
+            cursor.execute(f"CREATE TABLE {backup_name} AS SELECT * FROM {table_name}")
+        elif connection.vendor == 'mysql':
+            cursor.execute(f"CREATE TABLE {backup_name} AS SELECT * FROM {table_name}")
+        else:
+            cursor.execute(f"CREATE TABLE {backup_name} AS SELECT * FROM {table_name}")
+        
+        logger.info(f"Created backup table '{backup_name}'")
+        return backup_name
+        
+    except Exception as e:
+        raise MigrationError(f"Failed to backup table: {e}") from e
+
+
+def restore_table(table_name: str, suffix: str = '_backup', using: str = 'default') -> bool:
+    """
+    Restore a table from its backup.
+    
+    Args:
+        table_name: Name of the table to restore
+        suffix: Suffix of the backup table name
+        using: Database alias
+    
+    Returns:
+        True if successful
+    
+    Example:
+        >>> restore_table('users')  # Restores from users_backup
+    """
+    try:
+        from django.db import connections
+        
+        connection = connections[using]
+        cursor = connection.cursor()
+        
+        backup_name = f"{table_name}{suffix}"
+        
+        # Recreate table from backup
+        if connection.vendor == 'sqlite':
+            cursor.execute(f"CREATE TABLE {table_name} AS SELECT * FROM {backup_name}")
+        else:
+            cursor.execute(f"CREATE TABLE {table_name} AS SELECT * FROM {backup_name}")
+        
+        logger.info(f"Restored table '{table_name}' from backup")
+        return True
+        
+    except Exception as e:
+        raise MigrationError(f"Failed to restore table: {e}") from e
+
+
+def get_schema_diff(model_class: Type[Model], using: str = 'default') -> Dict[str, Any]:
+    """
+    Compare model definition with actual database schema.
+    
+    Returns information about differences between the model's field
+    definitions and the actual database table structure.
+    
+    Args:
+        model_class: The model class to compare
+        using: Database alias
+    
+    Returns:
+        Dictionary with 'missing_in_db', 'extra_in_db' lists
+    
+    Example:
+        >>> diff = get_schema_diff(User)
+        >>> if diff['missing_in_db']:
+        ...     print(f"Need to add columns: {diff['missing_in_db']}")
+    """
+    model_class._ensure_initialized()
+    
+    table_name = model_class._django_model._meta.db_table
+    
+    # Get columns from database
+    db_columns = set(c.lower() for c in get_table_columns(table_name, using))
+    
+    # Get columns from model
+    model_columns = set()
+    for field in model_class._django_model._meta.get_fields():
+        if hasattr(field, 'column') and field.column:
+            model_columns.add(field.column.lower())
+        elif hasattr(field, 'name'):
+            model_columns.add(field.name.lower())
+    
+    # Compute differences
+    missing_in_db = model_columns - db_columns
+    extra_in_db = db_columns - model_columns
+    
+    return {
+        'missing_in_db': list(missing_in_db),
+        'extra_in_db': list(extra_in_db),
+        'model_columns': list(model_columns),
+        'db_columns': list(db_columns),
+    }
+
+
+def sync_schema(model_class: Type[Model], using: str = 'default') -> Dict[str, List[str]]:
+    """
+    Sync database schema with model definition by adding missing columns.
+    
+    This function adds columns that exist in the model but not in the
+    database. It does NOT remove extra columns or change types.
+    
+    Args:
+        model_class: The model class to sync
+        using: Database alias
+    
+    Returns:
+        Dictionary with 'added' and 'skipped' column lists
+    
+    Example:
+        >>> result = sync_schema(User)
+        >>> print(f"Added columns: {result['added']}")
+    """
+    model_class._ensure_initialized()
+    
+    diff = get_schema_diff(model_class, using)
+    table_name = model_class._django_model._meta.db_table
+    
+    added = []
+    skipped = []
+    
+    for column_name in diff['missing_in_db']:
+        # Find the field definition
+        field = None
+        for f in model_class._django_model._meta.get_fields():
+            col_name = getattr(f, 'column', getattr(f, 'name', None))
+            if col_name and col_name.lower() == column_name.lower():
+                field = f
+                break
+        
+        if field:
+            try:
+                # Determine SQL type (simplified mapping)
+                field_type = type(field).__name__
+                sql_type = _django_field_to_sql_type(field)
+                
+                # Get default value
+                default = None
+                if field.has_default():
+                    default_val = field.get_default()
+                    if isinstance(default_val, str):
+                        default = f"'{default_val}'"
+                    elif isinstance(default_val, bool):
+                        default = "1" if default_val else "0"
+                    elif default_val is not None:
+                        default = str(default_val)
+                
+                safe_add_column(
+                    table_name=table_name,
+                    column_name=column_name,
+                    column_type=sql_type,
+                    default=default,
+                    nullable=field.null if hasattr(field, 'null') else True,
+                    using=using
+                )
+                added.append(column_name)
+            except Exception as e:
+                logger.warning(f"Could not add column {column_name}: {e}")
+                skipped.append(column_name)
+        else:
+            skipped.append(column_name)
+    
+    return {'added': added, 'skipped': skipped}
+
+
+def _django_field_to_sql_type(field) -> str:
+    """Convert a Django field to SQL type string."""
+    field_type = type(field).__name__
+    
+    type_map = {
+        'CharField': f"VARCHAR({getattr(field, 'max_length', 255)})",
+        'TextField': "TEXT",
+        'IntegerField': "INTEGER",
+        'BigIntegerField': "BIGINT",
+        'SmallIntegerField': "SMALLINT",
+        'FloatField': "REAL",
+        'DecimalField': f"DECIMAL({getattr(field, 'max_digits', 10)},{getattr(field, 'decimal_places', 2)})",
+        'BooleanField': "BOOLEAN",
+        'DateField': "DATE",
+        'DateTimeField': "DATETIME",
+        'TimeField': "TIME",
+        'EmailField': f"VARCHAR({getattr(field, 'max_length', 254)})",
+        'URLField': f"VARCHAR({getattr(field, 'max_length', 200)})",
+        'UUIDField': "VARCHAR(36)",
+        'AutoField': "INTEGER",
+        'BigAutoField': "BIGINT",
+    }
+    
+    return type_map.get(field_type, "TEXT")
